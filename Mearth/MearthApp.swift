@@ -6,5 +6,8 @@ struct MearthApp: App {
         WindowGroup {
             DashboardView()
         }
+#if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+#endif
     }
 }

@@ -73,8 +73,8 @@ struct DashboardView: View {
                             Color(white: 0.18),
                             Color(white: 0.08),
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
         )
@@ -243,8 +243,8 @@ private struct TemperatureCardView: View {
                 .fill(
                     LinearGradient(
                         colors: style.colors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
         )
