@@ -60,6 +60,7 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.gray)
+                .cornerRadius(50)
             }
 
             statusStrip
