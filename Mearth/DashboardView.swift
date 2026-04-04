@@ -5,6 +5,11 @@ struct DashboardView: View {
     @StateObject private var store = DashboardStore()
     private let refreshTimer = Timer.publish(every: 900, on: .main, in: .common).autoconnect()
 
+    @MainActor
+    init(store: DashboardStore? = nil) {
+        _store = StateObject(wrappedValue: store ?? DashboardStore())
+    }
+
     var body: some View {
         ZStack {
             background
@@ -33,7 +38,7 @@ struct DashboardView: View {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Mearth")
-                        .font(.system(size: titleSize, weight: .black))
+                        .font(.system(size: titleSize, weight: .bold))
                         .foregroundStyle(.white)
 
                     Text("Where on Earth is the temperature similar to Mars, the Moon, and home.")
@@ -54,7 +59,7 @@ struct DashboardView: View {
                         .padding(refreshButtonPadding)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.blue)
+                .tint(.gray)
             }
 
             statusStrip
@@ -77,24 +82,18 @@ struct DashboardView: View {
 
     private var statusStrip: some View {
         HStack(spacing: 12) {
-            Label(store.isLoading ? "Refreshing feeds" : "Snapshot ready", systemImage: store.isLoading ? "dot.radiowaves.left.and.right" : "checkmark.seal.fill")
+            Label(store.isLoading ? "Refreshing feeds" : "Data downloaded", systemImage: store.isLoading ? "dot.radiowaves.left.and.right" : "checkmark.seal.fill")
                 .font(.system(.subheadline, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.white.opacity(0.5))
 
             if let lastUpdated = store.lastUpdated {
-                Text("Updated \(lastUpdated.formatted(date: .abbreviated, time: .shortened))")
+                Text("\(lastUpdated.formatted(date: .abbreviated, time: .shortened))")
                     .font(.system(.subheadline, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.68))
+                    .foregroundStyle(.white.opacity(0.3))
             }
 
             Spacer(minLength: 12)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.09))
-        )
     }
 
     private var cardGrid: some View {
@@ -222,7 +221,7 @@ private struct TemperatureCardView: View {
             }
 
             Text(card.value)
-                .font(.system(size: 48, weight: .black))
+                .font(.system(size: 48, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(.white)
 
@@ -277,4 +276,11 @@ private struct TemperatureCardView: View {
 private struct CardStyle {
     let colors: [Color]
     let symbol: String
+}
+
+struct DashboardView_Previews: PreviewProvider {
+    static var previews: some View {
+        DashboardView(store: DashboardStore.preview)
+            .frame(width: 1440, height: 980)
+    }
 }

@@ -7,7 +7,25 @@ final class DashboardStore: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var warning: String?
 
-    private let composer = DashboardComposer()
+    private let composer: DashboardComposer
+
+    init(composer: DashboardComposer = DashboardComposer()) {
+        self.composer = composer
+    }
+
+    init(
+        previewCards: [TemperatureCard],
+        isLoading: Bool = false,
+        lastUpdated: Date? = nil,
+        warning: String? = nil,
+        composer: DashboardComposer = DashboardComposer()
+    ) {
+        self.composer = composer
+        self.cards = previewCards
+        self.isLoading = isLoading
+        self.lastUpdated = lastUpdated
+        self.warning = warning
+    }
 
     func refreshIfNeeded() async {
         guard cards.isEmpty else { return }
@@ -24,5 +42,48 @@ final class DashboardStore: ObservableObject {
         cards = snapshot.cards
         warning = snapshot.warning
         lastUpdated = snapshot.generatedAt
+    }
+}
+
+extension DashboardStore {
+    static var preview: DashboardStore {
+        DashboardStore(
+            previewCards: [
+                TemperatureCard(
+                    kind: .mars,
+                    title: "Mars",
+                    subtitle: "Curiosity at Gale Crater",
+                    value: "-18°C",
+                    detail: "LMST 14:42 · latest REMS sol 4849",
+                    footnote: "Estimated from the latest official REMS range."
+                ),
+                TemperatureCard(
+                    kind: .earth,
+                    title: "Earth Match",
+                    subtitle: "Reykjavik, Iceland",
+                    value: "-16°C",
+                    detail: "2°C difference from Mars right now",
+                    footnote: "Closest current city match from a broad global Open-Meteo sample."
+                ),
+                TemperatureCard(
+                    kind: .moon,
+                    title: "Moon Estimate",
+                    subtitle: "Apollo 11 · Tranquility Base",
+                    value: "96°C",
+                    detail: "Lunar local time 11:08",
+                    footnote: "Modeled from lunar phase and solar angle at the landing site, not a live sensor feed."
+                ),
+                TemperatureCard(
+                    kind: .local,
+                    title: "Local",
+                    subtitle: "Adelaide, South Australia, Australia",
+                    value: "22°C",
+                    detail: "Current temperature near you",
+                    footnote: "Approximate network location from ipapi.co, then current Open-Meteo conditions."
+                ),
+            ],
+            lastUpdated: Date(),
+            warning: "Preview data only."
+        )
     }
 }
