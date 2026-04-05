@@ -13,16 +13,27 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        ZStack {
-            background
+        GeometryReader { proxy in
+            ZStack {
+                background
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    header
-                    cardGrid
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+
+                        VStack(alignment: .leading, spacing: 24) {
+                            header
+                            cardGrid
+                        }
+                        .frame(maxWidth: contentMaxWidth)
+                        .padding(.horizontal, horizontalPadding)
+                        .padding(.vertical, 28)
+
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: proxy.size.height)
                 }
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, 28)
             }
         }
         .task {
@@ -126,7 +137,6 @@ struct DashboardView: View {
                     .disabled(card.location == nil)
                 }
             }
-
             if store.cards.isEmpty {
                 ProgressView("Collecting temperatures…")
                     .font(.system(.headline, weight: .medium))
@@ -154,7 +164,7 @@ struct DashboardView: View {
     }
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: adaptiveMinimum, maximum: 420), spacing: 18)]
+        [GridItem(.adaptive(minimum: adaptiveMinimum, maximum: 320), spacing: 18)]
     }
 
     private var horizontalPadding: CGFloat {
@@ -179,12 +189,16 @@ struct DashboardView: View {
 
     private var adaptiveMinimum: CGFloat {
         #if os(tvOS)
-        360
+        280
         #elseif os(macOS)
-        290
+        210
         #else
-        260
+        210
         #endif
+    }
+
+    private var contentMaxWidth: CGFloat {
+        650
     }
 
     private var cardInset: CGFloat {
