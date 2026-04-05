@@ -1,8 +1,10 @@
 import Combine
+import MapKit
 import SwiftUI
 
 struct DashboardView: View {
     @StateObject private var store = DashboardStore()
+    @State private var selectedLocation: CardLocation?
     private let refreshTimer = Timer.publish(every: 900, on: .main, in: .common).autoconnect()
 
     @MainActor
@@ -31,6 +33,9 @@ struct DashboardView: View {
                 await store.refresh()
             }
         }
+        .sheet(item: $selectedLocation) { location in
+            LocationDetailSheet(location: location)
+        }
     }
 
     private var header: some View {
@@ -56,11 +61,16 @@ struct DashboardView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: refreshIconSize, weight: .semibold))
-                        .padding(refreshButtonPadding)
+                        .frame(width: refreshButtonSize, height: refreshButtonSize)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.gray)
-                .cornerRadius(50)
+                .buttonStyle(.plain)
+                .background(
+                    Circle()
+                        .fill(.gray)
+                )
+                #if os(macOS)
+                .focusable(false)
+                #endif
             }
 
             statusStrip
@@ -107,7 +117,13 @@ struct DashboardView: View {
 
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(store.cards) { card in
-                    TemperatureCardView(card: card)
+                    Button {
+                        selectedLocation = card.location
+                    } label: {
+                        TemperatureCardView(card: card)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(card.location == nil)
                 }
             }
 
@@ -193,6 +209,10 @@ struct DashboardView: View {
         #else
         22
         #endif
+    }
+
+    private var refreshButtonSize: CGFloat {
+        refreshIconSize + (refreshButtonPadding * 2)
     }
 }
 

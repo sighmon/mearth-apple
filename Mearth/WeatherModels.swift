@@ -9,6 +9,25 @@ enum TemperatureCardKind: String, Identifiable {
     var id: String { rawValue }
 }
 
+enum CelestialBody: String {
+    case earth
+    case mars
+    case moon
+}
+
+struct CardLocation: Identifiable {
+    let title: String
+    let subtitle: String
+    let body: CelestialBody
+    let latitude: Double
+    let longitude: Double
+    let note: String
+
+    var id: String {
+        "\(body.rawValue)-\(title)-\(latitude)-\(longitude)"
+    }
+}
+
 struct TemperatureCard: Identifiable {
     let kind: TemperatureCardKind
     let title: String
@@ -16,6 +35,7 @@ struct TemperatureCard: Identifiable {
     let value: String
     let detail: String
     let footnote: String
+    let location: CardLocation?
 
     var id: String { kind.id }
 }
@@ -42,10 +62,14 @@ struct EarthCityTemperature {
     let city: String
     let country: String
     let temperature: Double
+    let latitude: Double
+    let longitude: Double
 }
 
 struct LocalConditions {
     let label: String
     let temperature: Double
     let sourceNote: String
+    let latitude: Double
+    let longitude: Double
 }

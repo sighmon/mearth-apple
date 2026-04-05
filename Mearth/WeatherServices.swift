@@ -27,7 +27,15 @@ struct DashboardComposer {
                     subtitle: "Curiosity at Gale Crater",
                     value: Self.temperatureString(mars.estimatedCurrentTemperature),
                     detail: "LMST \(Self.hourMinuteString(mars.localMeanSolarTime)) · latest REMS sol \(mars.sol)",
-                    footnote: "Estimated from the latest official REMS range (\(Self.dateString(mars.terrestrialDate)) UTC, \(mars.season))."
+                    footnote: "Estimated from the latest official REMS range (\(Self.dateString(mars.terrestrialDate)) UTC, \(mars.season)).",
+                    location: CardLocation(
+                        title: "Curiosity Rover",
+                        subtitle: "Gale Crater, Mars",
+                        body: .mars,
+                        latitude: -4.5895,
+                        longitude: 137.4417,
+                        note: "Apple Maps does not support Mars, so this sheet uses a native planetary locator centered on Curiosity's landing region."
+                    )
                 )
             )
 
@@ -41,7 +49,15 @@ struct DashboardComposer {
                         subtitle: "\(earthMatch.city), \(earthMatch.country)",
                         value: Self.temperatureString(earthMatch.temperature),
                         detail: "\(Self.temperatureDeltaString(delta)) from Mars right now",
-                        footnote: "Closest current city match from a broad global Open-Meteo sample."
+                        footnote: "Closest current city match from a broad global Open-Meteo sample.",
+                        location: CardLocation(
+                            title: earthMatch.city,
+                            subtitle: earthMatch.country,
+                            body: .earth,
+                            latitude: earthMatch.latitude,
+                            longitude: earthMatch.longitude,
+                            note: "Shown with native Apple Maps."
+                        )
                     )
                 )
             } catch {
@@ -53,7 +69,8 @@ struct DashboardComposer {
                         subtitle: "Global city sample unavailable",
                         value: "--",
                         detail: "Open-Meteo did not return a usable comparison set.",
-                        footnote: "Mars is still shown from Curiosity's official feed."
+                        footnote: "Mars is still shown from Curiosity's official feed.",
+                        location: nil
                     )
                 )
             }
@@ -66,7 +83,8 @@ struct DashboardComposer {
                     subtitle: "Curiosity feed unavailable",
                     value: "--",
                     detail: "The official REMS endpoint did not return a usable payload.",
-                    footnote: "This card uses CAB's Curiosity weather widget feed when it is reachable."
+                    footnote: "This card uses CAB's Curiosity weather widget feed when it is reachable.",
+                    location: nil
                 )
             )
             cards.append(
@@ -76,7 +94,8 @@ struct DashboardComposer {
                     subtitle: "Waiting on the Mars reference temperature",
                     value: "--",
                     detail: "A comparison city needs the Curiosity reading first.",
-                    footnote: "Refresh again when the Mars feed is back."
+                    footnote: "Refresh again when the Mars feed is back.",
+                    location: nil
                 )
             )
         }
@@ -89,7 +108,15 @@ struct DashboardComposer {
                 subtitle: "Apollo 11 · Tranquility Base",
                 value: Self.temperatureString(moonEstimate.temperature),
                 detail: "Lunar local time \(Self.hourMinuteString(moonEstimate.localHour))",
-                footnote: "Modeled from lunar phase and solar angle at the landing site, not a live sensor feed."
+                footnote: "Modeled from lunar phase and solar angle at the landing site, not a live sensor feed.",
+                location: CardLocation(
+                    title: "Apollo 11",
+                    subtitle: "Tranquility Base, Moon",
+                    body: .moon,
+                    latitude: 0.6741,
+                    longitude: 23.4729,
+                    note: "Apple Maps does not support the Moon, so this sheet uses a native lunar locator with the landing coordinates."
+                )
             )
         )
 
@@ -102,7 +129,15 @@ struct DashboardComposer {
                     subtitle: local.label,
                     value: Self.temperatureString(local.temperature),
                     detail: "Current temperature near you",
-                    footnote: local.sourceNote
+                    footnote: local.sourceNote,
+                    location: CardLocation(
+                        title: "Your Approximate Location",
+                        subtitle: local.label,
+                        body: .earth,
+                        latitude: local.latitude,
+                        longitude: local.longitude,
+                        note: "Shown with native Apple Maps. Network geolocation may be approximate."
+                    )
                 )
             )
         } catch {
@@ -114,7 +149,8 @@ struct DashboardComposer {
                     subtitle: "Current location unavailable",
                     value: "--",
                     detail: "IP geolocation or local forecast lookup failed.",
-                    footnote: "This card falls back to network location so it also works on Apple TV."
+                    footnote: "This card falls back to network location so it also works on Apple TV.",
+                    location: nil
                 )
             )
         }
@@ -239,7 +275,13 @@ struct EarthTemperatureService {
         let data = try await client.data(from: url)
         let responses = try OpenMeteoForecastResponse.decodeMany(from: data)
         let paired = zip(Self.cities, responses).map { city, response in
-            EarthCityTemperature(city: city.name, country: city.country, temperature: response.current.temperature2M)
+            EarthCityTemperature(
+                city: city.name,
+                country: city.country,
+                temperature: response.current.temperature2M,
+                latitude: city.latitude,
+                longitude: city.longitude
+            )
         }
 
         guard let closest = paired.min(by: {
@@ -325,7 +367,9 @@ struct LocalWeatherService {
         return LocalConditions(
             label: resolved.label,
             temperature: forecast.current.temperature2M,
-            sourceNote: resolved.sourceNote
+            sourceNote: resolved.sourceNote,
+            latitude: resolved.latitude,
+            longitude: resolved.longitude
         )
     }
 
