@@ -165,7 +165,14 @@ struct DashboardView: View {
     }
 
     private var columns: [GridItem] {
+        #if os(tvOS)
+        [
+            GridItem(.flexible(), spacing: 18, alignment: .top),
+            GridItem(.flexible(), spacing: 18, alignment: .top),
+        ]
+        #else
         [GridItem(.adaptive(minimum: adaptiveMinimum, maximum: adaptiveMaximum), spacing: 18)]
+        #endif
     }
 
     private var horizontalPadding: CGFloat {
@@ -208,9 +215,9 @@ struct DashboardView: View {
         #endif
     }
 
-    private var contentMaxWidth: CGFloat {
+    private var contentMaxWidth: CGFloat? {
         #if os(tvOS)
-        650
+        nil
         #elseif os(macOS)
         650
         #else
