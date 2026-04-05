@@ -27,14 +27,14 @@ struct DashboardComposer {
                     subtitle: "Curiosity at Gale Crater",
                     value: Self.temperatureString(mars.estimatedCurrentTemperature),
                     detail: "LMST \(Self.hourMinuteString(mars.localMeanSolarTime)) · latest REMS sol \(mars.sol)",
-                    footnote: "Estimated from the latest official REMS range (\(Self.dateString(mars.terrestrialDate)) UTC, \(mars.season)).",
+                    footnote: "Estimated from REMS range (\(Self.dateString(mars.terrestrialDate)) UTC, \(mars.season)).",
                     location: CardLocation(
                         title: "Curiosity Rover",
                         subtitle: "Gale Crater, Mars",
                         body: .mars,
                         latitude: -4.5895,
                         longitude: 137.4417,
-                        note: "Apple Maps does not support Mars, so this sheet uses a native planetary locator centered on Curiosity's landing region."
+                        note: "Planetary locator centered on Curiosity's landing region."
                     )
                 )
             )
@@ -49,7 +49,7 @@ struct DashboardComposer {
                         subtitle: "\(earthMatch.city), \(earthMatch.country)",
                         value: Self.temperatureString(earthMatch.temperature),
                         detail: "\(Self.temperatureDeltaString(delta)) from Mars right now",
-                        footnote: "Closest current city match from a broad global Open-Meteo sample.",
+                        footnote: "Closest current city match from a global sample.",
                         location: CardLocation(
                             title: earthMatch.city,
                             subtitle: earthMatch.country,
@@ -108,14 +108,14 @@ struct DashboardComposer {
                 subtitle: "Apollo 11 · Tranquility Base",
                 value: Self.temperatureString(moonEstimate.temperature),
                 detail: "Lunar local time \(Self.hourMinuteString(moonEstimate.localHour))",
-                footnote: "Modeled from lunar phase and solar angle at the landing site, not a live sensor feed.",
+                footnote: "Estimated from lunar phase and solar angle at the landing site, not a live sensor feed.",
                 location: CardLocation(
                     title: "Apollo 11",
                     subtitle: "Tranquility Base, Moon",
                     body: .moon,
                     latitude: 0.6741,
                     longitude: 23.4729,
-                    note: "Apple Maps does not support the Moon, so this sheet uses a native lunar locator with the landing coordinates."
+                    note: "Lunar locator with the landing coordinates."
                 )
             )
         )
@@ -381,7 +381,7 @@ struct LocalWeatherService {
                 label: locationLabel(city: ipapi.city, region: ipapi.region, country: ipapi.countryName),
                 latitude: latitude,
                 longitude: longitude,
-                sourceNote: "Approximate network location from ipapi.co, then current Open-Meteo conditions."
+                sourceNote: "Approximate network location."
             )
         }
 
@@ -394,7 +394,7 @@ struct LocalWeatherService {
             label: locationLabel(city: ipwho.city, region: ipwho.region, country: ipwho.country),
             latitude: latitude,
             longitude: longitude,
-            sourceNote: "Approximate network location from ipwho.is, then current Open-Meteo conditions."
+            sourceNote: "Approximate network location."
         )
     }
 

@@ -134,6 +134,7 @@ struct DashboardView: View {
                         TemperatureCardView(card: card)
                     }
                     .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .disabled(card.location == nil)
                 }
             }
@@ -145,7 +146,7 @@ struct DashboardView: View {
                     .frame(maxWidth: .infinity, minHeight: 220)
                     .background(
                         RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
+                            .fill(Color.white.opacity(0.1))
                     )
             }
         }
@@ -164,7 +165,7 @@ struct DashboardView: View {
     }
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: adaptiveMinimum, maximum: 320), spacing: 18)]
+        [GridItem(.adaptive(minimum: adaptiveMinimum, maximum: adaptiveMaximum), spacing: 18)]
     }
 
     private var horizontalPadding: CGFloat {
@@ -173,7 +174,7 @@ struct DashboardView: View {
         #elseif os(macOS)
         34
         #else
-        20
+        30
         #endif
     }
 
@@ -193,12 +194,28 @@ struct DashboardView: View {
         #elseif os(macOS)
         210
         #else
-        210
+        300
+        #endif
+    }
+
+    private var adaptiveMaximum: CGFloat {
+        #if os(tvOS)
+        320
+        #elseif os(macOS)
+        320
+        #else
+        391
         #endif
     }
 
     private var contentMaxWidth: CGFloat {
+        #if os(tvOS)
         650
+        #elseif os(macOS)
+        650
+        #else
+        800
+        #endif
     }
 
     private var cardInset: CGFloat {
@@ -272,7 +289,7 @@ private struct TemperatureCardView: View {
             }
         }
         .padding(cardPadding)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .fill(
