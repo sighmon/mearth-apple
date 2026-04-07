@@ -1,4 +1,13 @@
 import Foundation
+import OSLog
+#if canImport(CoreLocation)
+import CoreLocation
+#endif
+#if canImport(WeatherKit)
+import WeatherKit
+#endif
+
+private let weatherLogger = Logger(subsystem: "com.sighmon.mearth", category: "Weather")
 
 struct DashboardComposer {
     private let marsService = MarsWeatherService()
@@ -6,20 +15,17 @@ struct DashboardComposer {
     private let moonService = MoonTemperatureEstimator()
     private let localService = LocalWeatherService()
 
-    func makeSnapshot(now: Date) async -> DashboardSnapshot {
+    func makePrimarySnapshot(now: Date) async -> DashboardSnapshot {
+        weatherLogger.info("Primary snapshot refresh started at \(now.formatted(date: .abbreviated, time: .standard))")
         var cards: [TemperatureCard] = []
         var warnings: [String] = []
 
-        let marsResult: Result<MarsConditions, Error>
-        do {
-            marsResult = .success(try await marsService.fetchCurrentConditions(at: now))
-        } catch {
-            marsResult = .failure(error)
-            warnings.append("Curiosity weather could not be refreshed.")
-        }
+        let marsResult = await loadMarsResult(at: now)
+        let moonEstimate = moonService.estimate(at: now)
 
         switch marsResult {
         case .success(let mars):
+            weatherLogger.info("Mars refresh succeeded for sol \(mars.sol)")
             cards.append(
                 TemperatureCard(
                     kind: .mars,
@@ -45,6 +51,7 @@ struct DashboardComposer {
             do {
                 let earthMatch = try await earthService.closestCityMatch(for: mars.estimatedCurrentTemperature)
                 let delta = abs(earthMatch.temperature - mars.estimatedCurrentTemperature)
+                weatherLogger.info("Earth match succeeded: \(earthMatch.city), \(earthMatch.country) at \(earthMatch.temperature, format: .fixed(precision: 1))C")
                 cards.append(
                     TemperatureCard(
                         kind: .earth,
@@ -52,7 +59,7 @@ struct DashboardComposer {
                         subtitle: "\(earthMatch.city), \(earthMatch.country)",
                         value: Self.temperatureString(earthMatch.temperature),
                         detail: "\(Self.temperatureDeltaString(delta)) from Mars right now",
-                        footnote: "Closest current city match from a global sample.",
+                        footnote: earthMatch.sourceNote,
                         lastUpdated: now,
                         isAvailable: true,
                         isCached: false,
@@ -67,7 +74,8 @@ struct DashboardComposer {
                     )
                 )
             } catch {
-                warnings.append("Earth comparison cities are unavailable.")
+                weatherLogger.error("Earth match failed: \(error.localizedDescription)")
+                warnings.append("Earth comparison cities are unavailable: \(error.localizedDescription)")
                 cards.append(
                     TemperatureCard(
                         kind: .earth,
@@ -84,7 +92,8 @@ struct DashboardComposer {
                 )
             }
 
-        case .failure:
+        case .failure(let error):
+            weatherLogger.error("Mars refresh failed: \(error.localizedDescription)")
             cards.append(
                 TemperatureCard(
                     kind: .mars,
@@ -113,9 +122,9 @@ struct DashboardComposer {
                     location: nil
                 )
             )
+            warnings.append("Curiosity weather could not be refreshed: \(error.localizedDescription)")
         }
 
-        let moonEstimate = moonService.estimate(at: now)
         cards.append(
             TemperatureCard(
                 kind: .moon,
@@ -138,10 +147,22 @@ struct DashboardComposer {
             )
         )
 
-        do {
-            let local = try await localService.fetchCurrentConditions()
-            cards.append(
-                TemperatureCard(
+        weatherLogger.info("Primary snapshot refresh finished with \(cards.count) cards")
+        return DashboardSnapshot(
+            generatedAt: now,
+            cards: cards,
+            warning: warnings.isEmpty ? nil : warnings.joined(separator: " ")
+        )
+    }
+
+    func makeLocalSnapshot(now: Date) async -> DashboardCardSnapshot {
+        weatherLogger.info("Local card refresh started")
+        switch await loadLocalResult() {
+        case .success(let local):
+            weatherLogger.info("Local weather succeeded for \(local.label) at \(local.temperature, format: .fixed(precision: 1))C")
+            return DashboardCardSnapshot(
+                generatedAt: now,
+                card: TemperatureCard(
                     kind: .local,
                     title: "Local",
                     subtitle: local.label,
@@ -159,12 +180,14 @@ struct DashboardComposer {
                         longitude: local.longitude,
                         note: "Shown with native Apple Maps. Network geolocation may be approximate."
                     )
-                )
+                ),
+                warning: nil
             )
-        } catch {
-            warnings.append("Local weather could not be resolved.")
-            cards.append(
-                TemperatureCard(
+        case .failure(let error):
+            weatherLogger.error("Local weather failed: \(error.localizedDescription)")
+            return DashboardCardSnapshot(
+                generatedAt: now,
+                card: TemperatureCard(
                     kind: .local,
                     title: "Local",
                     subtitle: "Current location unavailable",
@@ -175,15 +198,32 @@ struct DashboardComposer {
                     isAvailable: false,
                     isCached: false,
                     location: nil
-                )
+                ),
+                warning: "Local weather could not be resolved: \(error.localizedDescription)"
             )
         }
+    }
 
-        return DashboardSnapshot(
-            generatedAt: now,
-            cards: cards,
-            warning: warnings.isEmpty ? nil : warnings.joined(separator: " ")
-        )
+    private func loadMarsResult(at now: Date) async -> Result<MarsConditions, Error> {
+        do {
+            return .success(try await withTimeout(seconds: 15) {
+                try await marsService.fetchCurrentConditions(at: now)
+            })
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func loadLocalResult() async -> Result<LocalConditions, Error> {
+        weatherLogger.info("Starting local weather task with a 6 second dashboard budget")
+        do {
+            return .success(try await withTimeout(seconds: 6) {
+                try await localService.fetchCurrentConditions()
+            })
+        } catch {
+            weatherLogger.error("Local weather task failed before snapshot completion: \(error.localizedDescription)")
+            return .failure(error)
+        }
     }
 
     private static func temperatureString(_ value: Double) -> String {
@@ -212,6 +252,7 @@ struct MarsWeatherService {
     private let client = RemoteJSONClient(timeoutIntervalForRequest: 40, timeoutIntervalForResource: 60)
 
     func fetchCurrentConditions(at now: Date) async throws -> MarsConditions {
+        weatherLogger.info("Fetching Mars weather from CAB REMS feed")
         let url = URL(string: "http://cab.inta-csic.es/rems/wp-content/plugins/marsweather-widget/api.php")!
         let payload = try await client.decode(MarsWidgetPayload.self, from: url)
 
@@ -281,6 +322,15 @@ struct MarsWeatherService {
 }
 
 struct EarthTemperatureService {
+    private let openMeteoService = OpenMeteoEarthTemperatureService()
+
+    func closestCityMatch(for referenceTemperature: Double) async throws -> EarthCityTemperature {
+        weatherLogger.info("Finding Earth match using Open-Meteo sample for reference \(referenceTemperature, format: .fixed(precision: 1))C")
+        return try await openMeteoService.closestCityMatch(for: referenceTemperature)
+    }
+}
+
+private struct OpenMeteoEarthTemperatureService {
     private let client = RemoteJSONClient()
 
     func closestCityMatch(for referenceTemperature: Double) async throws -> EarthCityTemperature {
@@ -304,7 +354,8 @@ struct EarthTemperatureService {
                 country: city.country,
                 temperature: response.current.temperature2M,
                 latitude: city.latitude,
-                longitude: city.longitude
+                longitude: city.longitude,
+                sourceNote: "Closest current city match from a global sample via Open-Meteo."
             )
         }
 
@@ -314,6 +365,7 @@ struct EarthTemperatureService {
             throw WeatherServiceError.invalidPayload
         }
 
+        weatherLogger.info("Open-Meteo Earth match selected \(closest.city), \(closest.country)")
         return closest
     }
 
@@ -321,7 +373,7 @@ struct EarthTemperatureService {
         String(format: "%.4f", value)
     }
 
-    private static let cities: [EarthCity] = [
+    static let cities: [EarthCity] = [
         .init(name: "Longyearbyen", country: "Svalbard", latitude: 78.2232, longitude: 15.6469),
         .init(name: "Nuuk", country: "Greenland", latitude: 64.1814, longitude: -51.6941),
         .init(name: "Yellowknife", country: "Canada", latitude: 62.4540, longitude: -114.3718),
@@ -383,15 +435,54 @@ struct MoonTemperatureEstimator {
 }
 
 struct LocalWeatherService {
-    private let client = RemoteJSONClient()
+    #if canImport(CoreLocation)
+    private let deviceLocationService = DeviceLocationLocalWeatherService()
+    #endif
+    private let networkFallbackService = NetworkFallbackLocalWeatherService()
 
     func fetchCurrentConditions() async throws -> LocalConditions {
+        #if canImport(CoreLocation)
+        do {
+            weatherLogger.info("Attempting local weather from device location")
+            return try await deviceLocationService.fetchCurrentConditions()
+        } catch {
+            weatherLogger.error("Device-location local weather failed, falling back to network: \(error.localizedDescription)")
+            return try await networkFallbackService.fetchCurrentConditions(preferredLocation: nil, reason: error)
+        }
+        #else
+        weatherLogger.info("Device location unavailable on this platform, using network fallback")
+        return try await networkFallbackService.fetchCurrentConditions(preferredLocation: nil, reason: nil)
+        #endif
+    }
+}
+
+private struct NetworkFallbackLocalWeatherService {
+    private let client = RemoteJSONClient()
+
+    func fetchCurrentConditions(preferredLocation: CLLocation?, reason: Error?) async throws -> LocalConditions {
+        if let preferredLocation {
+            weatherLogger.info("Fetching local fallback weather for device coordinates \(preferredLocation.coordinate.latitude, format: .fixed(precision: 4)), \(preferredLocation.coordinate.longitude, format: .fixed(precision: 4))")
+            let forecast = try await fetchTemperature(
+                latitude: preferredLocation.coordinate.latitude,
+                longitude: preferredLocation.coordinate.longitude
+            )
+            let label = await resolveLabel(for: preferredLocation)
+            return LocalConditions(
+                label: label,
+                temperature: forecast.current.temperature2M,
+                sourceNote: "Current device location via Apple Location Services, temperature via Open-Meteo fallback.",
+                latitude: preferredLocation.coordinate.latitude,
+                longitude: preferredLocation.coordinate.longitude
+            )
+        }
+
+        weatherLogger.info("Resolving network-based fallback location")
         let resolved = try await resolveLocation()
         let forecast = try await fetchTemperature(latitude: resolved.latitude, longitude: resolved.longitude)
         return LocalConditions(
             label: resolved.label,
             temperature: forecast.current.temperature2M,
-            sourceNote: resolved.sourceNote,
+            sourceNote: sourceNote(reason: reason),
             latitude: resolved.latitude,
             longitude: resolved.longitude
         )
@@ -401,6 +492,7 @@ struct LocalWeatherService {
         if let ipapi = try? await client.decode(IPAPILocationResponse.self, from: URL(string: "https://ipapi.co/json/")!),
            let latitude = ipapi.latitude,
            let longitude = ipapi.longitude {
+            weatherLogger.info("Resolved fallback location via ipapi: \(latitude, format: .fixed(precision: 4)), \(longitude, format: .fixed(precision: 4))")
             return ResolvedLocation(
                 label: locationLabel(city: ipapi.city, region: ipapi.region, country: ipapi.countryName),
                 latitude: latitude,
@@ -414,6 +506,7 @@ struct LocalWeatherService {
             throw WeatherServiceError.invalidPayload
         }
 
+        weatherLogger.info("Resolved fallback location via ipwho: \(latitude, format: .fixed(precision: 4)), \(longitude, format: .fixed(precision: 4))")
         return ResolvedLocation(
             label: locationLabel(city: ipwho.city, region: ipwho.region, country: ipwho.country),
             latitude: latitude,
@@ -423,6 +516,7 @@ struct LocalWeatherService {
     }
 
     private func fetchTemperature(latitude: Double, longitude: Double) async throws -> OpenMeteoForecastResponse {
+        weatherLogger.info("Fetching Open-Meteo current temperature for \(latitude, format: .fixed(precision: 4)), \(longitude, format: .fixed(precision: 4))")
         var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(format: "%.4f", latitude)),
@@ -449,7 +543,220 @@ struct LocalWeatherService {
 
         return parts.isEmpty ? "Current network location" : parts.joined(separator: ", ")
     }
+
+    private func resolveLabel(for location: CLLocation) async -> String {
+        let geocoder = CLGeocoder()
+        if let placemark = try? await geocoder.reverseGeocodeLocation(location).first {
+            let parts = [placemark.locality, placemark.administrativeArea, placemark.country]
+                .compactMap { value -> String? in
+                    guard let value, !value.isEmpty else {
+                        return nil
+                    }
+                    return value
+                }
+
+            if !parts.isEmpty {
+                return parts.joined(separator: ", ")
+            }
+        }
+
+        return String(
+            format: "Lat %.2f, Lon %.2f",
+            location.coordinate.latitude,
+            location.coordinate.longitude
+        )
+    }
+
+    private func sourceNote(reason: Error?) -> String {
+        if reason == nil {
+            return "Approximate network location and weather fallback."
+        }
+        return "Approximate network location and weather fallback because Apple location or WeatherKit was unavailable."
+    }
 }
+
+#if canImport(CoreLocation)
+private struct DeviceLocationLocalWeatherService {
+    private let fallbackService = NetworkFallbackLocalWeatherService()
+    #if canImport(WeatherKit)
+    private let weatherService = WeatherService.shared
+    #endif
+
+    func fetchCurrentConditions() async throws -> LocalConditions {
+        let location: CLLocation
+        do {
+            location = try await withTimeout(seconds: 4) {
+                try await DeviceLocationProvider().requestCurrentLocation()
+            }
+        } catch {
+            weatherLogger.error("Device location lookup failed before weather lookup: \(error.localizedDescription)")
+            throw error
+        }
+        weatherLogger.info("Resolved device location \(location.coordinate.latitude, format: .fixed(precision: 4)), \(location.coordinate.longitude, format: .fixed(precision: 4))")
+        #if canImport(WeatherKit)
+        do {
+            let current = try await withTimeout(seconds: 4) {
+                try await weatherService.weather(for: location, including: .current)
+            }
+            let label = await resolveLabel(for: location)
+            weatherLogger.info("WeatherKit local weather succeeded for \(label)")
+
+            return LocalConditions(
+                label: label,
+                temperature: current.temperature.converted(to: .celsius).value,
+                sourceNote: "Current device location via Apple Location Services, weather via WeatherKit.",
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude
+            )
+        } catch {
+            weatherLogger.error("WeatherKit local weather failed, falling back to Open-Meteo: \(error.localizedDescription)")
+            return try await fallbackService.fetchCurrentConditions(preferredLocation: location, reason: error)
+        }
+        #else
+        return try await fallbackService.fetchCurrentConditions(preferredLocation: location, reason: nil)
+        #endif
+    }
+
+    private func resolveLabel(for location: CLLocation) async -> String {
+        let geocoder = CLGeocoder()
+        if let placemark = try? await geocoder.reverseGeocodeLocation(location).first {
+            let parts = [placemark.locality, placemark.administrativeArea, placemark.country]
+                .compactMap { value -> String? in
+                    guard let value, !value.isEmpty else {
+                        return nil
+                    }
+                    return value
+                }
+
+            if !parts.isEmpty {
+                return parts.joined(separator: ", ")
+            }
+        }
+
+        return String(
+            format: "Lat %.2f, Lon %.2f",
+            location.coordinate.latitude,
+            location.coordinate.longitude
+        )
+    }
+}
+
+private final class DeviceLocationProvider: NSObject, CLLocationManagerDelegate {
+    private let locationManager = CLLocationManager()
+    private var authorizationContinuation: CheckedContinuation<Void, Error>?
+    private var locationContinuation: CheckedContinuation<CLLocation, Error>?
+
+    override init() {
+        super.init()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+    }
+
+    func requestCurrentLocation() async throws -> CLLocation {
+        try await ensureAuthorization()
+
+        if let location = locationManager.location {
+            weatherLogger.info("Using cached device location after authorization")
+            return location
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            locationContinuation = continuation
+            weatherLogger.info("Requesting one-shot device location update")
+            locationManager.requestLocation()
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        weatherLogger.info("Location authorization changed to \(Self.authorizationStatusDescription(manager.authorizationStatus))")
+        guard let continuation = authorizationContinuation else {
+            return
+        }
+
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            authorizationContinuation = nil
+            weatherLogger.info("Location authorization granted")
+            continuation.resume()
+        case .denied, .restricted:
+            authorizationContinuation = nil
+            weatherLogger.error("Location authorization denied or restricted")
+            continuation.resume(throwing: WeatherServiceError.locationUnavailable)
+        case .notDetermined:
+            break
+        @unknown default:
+            authorizationContinuation = nil
+            continuation.resume(throwing: WeatherServiceError.locationUnavailable)
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        locationManagerDidChangeAuthorization(manager)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let continuation = locationContinuation else {
+            return
+        }
+
+        locationContinuation = nil
+
+        if let location = locations.last {
+            weatherLogger.info("Received device location update")
+            continuation.resume(returning: location)
+        } else {
+            weatherLogger.error("Location update returned no coordinates")
+            continuation.resume(throwing: WeatherServiceError.locationUnavailable)
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard let continuation = locationContinuation else {
+            return
+        }
+
+        locationContinuation = nil
+        weatherLogger.error("Location manager failed: \(error.localizedDescription)")
+        continuation.resume(throwing: error)
+    }
+
+    private func ensureAuthorization() async throws {
+        weatherLogger.info("Current location authorization status is \(Self.authorizationStatusDescription(self.locationManager.authorizationStatus))")
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            return
+        case .denied, .restricted:
+            weatherLogger.error("Location unavailable because authorization is denied or restricted")
+            throw WeatherServiceError.locationUnavailable
+        case .notDetermined:
+            try await withCheckedThrowingContinuation { continuation in
+                authorizationContinuation = continuation
+                weatherLogger.info("Requesting when-in-use location authorization")
+                locationManager.requestWhenInUseAuthorization()
+            }
+        @unknown default:
+            throw WeatherServiceError.locationUnavailable
+        }
+    }
+
+    private static func authorizationStatusDescription(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined:
+            return "notDetermined"
+        case .restricted:
+            return "restricted"
+        case .denied:
+            return "denied"
+        case .authorizedAlways:
+            return "authorizedAlways"
+        case .authorizedWhenInUse:
+            return "authorizedWhenInUse"
+        @unknown default:
+            return "unknown"
+        }
+    }
+}
+#endif
 
 struct RemoteJSONClient {
     private let session: URLSession
@@ -484,6 +791,8 @@ enum WeatherServiceError: LocalizedError {
     case invalidURL
     case invalidPayload
     case httpFailure
+    case locationUnavailable
+    case timeout
 
     var errorDescription: String? {
         switch self {
@@ -493,6 +802,10 @@ enum WeatherServiceError: LocalizedError {
             return "The source returned data in an unexpected format."
         case .httpFailure:
             return "The source returned a failed HTTP response."
+        case .locationUnavailable:
+            return "The current device location could not be resolved."
+        case .timeout:
+            return "The weather request timed out."
         }
     }
 }
@@ -633,6 +946,28 @@ private func positiveModulo(_ value: Double, _ modulus: Double) -> Double {
 private func signedModulo(_ value: Double, _ modulus: Double) -> Double {
     let centered = positiveModulo(value + modulus / 2, modulus) - modulus / 2
     return centered == -modulus / 2 ? modulus / 2 : centered
+}
+
+private func withTimeout<T: Sendable>(
+    seconds: Double,
+    operation: @escaping @Sendable () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask {
+            try await operation()
+        }
+        group.addTask {
+            let duration = UInt64(seconds * 1_000_000_000)
+            try await Task.sleep(nanoseconds: duration)
+            throw WeatherServiceError.timeout
+        }
+
+        guard let first = try await group.next() else {
+            throw WeatherServiceError.timeout
+        }
+        group.cancelAll()
+        return first
+    }
 }
 
 private extension Date {

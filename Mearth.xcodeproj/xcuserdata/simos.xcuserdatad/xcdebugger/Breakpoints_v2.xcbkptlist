@@ -16,15 +16,15 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "201"
             endingLineNumber = "201"
-            landmarkName = "hourMinuteString(_:)"
-            landmarkType = "7">
+            landmarkName = "DashboardComposer"
+            landmarkType = "14">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "27780BBA-81CB-40AE-91AB-E08E1F5669BB"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "Mearth/WeatherServices.swift"
@@ -32,7 +32,23 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "296"
             endingLineNumber = "296"
-            landmarkName = "closestCityMatch(for:)"
+            landmarkName = "estimateTemperature(localTime:sunrise:sunset:minTemp:maxTemp:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "A03D7B17-6CA1-44CE-ABD7-6D9A2E812D1C"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Mearth/WeatherServices.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "314"
+            endingLineNumber = "314"
+            landmarkName = "estimateTemperature(localTime:sunrise:sunset:minTemp:maxTemp:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

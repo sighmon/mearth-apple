@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let dashboardLogger = Logger(subsystem: "com.sighmon.mearth", category: "Dashboard")
 
 @MainActor
 final class DashboardStore: ObservableObject {
@@ -17,7 +20,24 @@ final class DashboardStore: ObservableObject {
         self.cacheStore = cacheStore
         let cachedCards = cacheStore.loadCards()
         self.cachedCardsByKind = Dictionary(uniqueKeysWithValues: cachedCards.map { ($0.kind, $0) })
+        self.cards = Self.cardsForDisplay(
+            cachedCards.map { card in
+                TemperatureCard(
+                    kind: card.kind,
+                    title: card.title,
+                    subtitle: card.subtitle,
+                    value: card.value,
+                    detail: card.detail,
+                    footnote: card.footnote,
+                    lastUpdated: card.lastUpdated,
+                    isAvailable: card.isAvailable,
+                    isCached: true,
+                    location: card.location
+                )
+            }
+        )
         self.lastSuccessfulRefresh = cachedCards.map(\.lastUpdated).max()
+        dashboardLogger.info("DashboardStore initialized with \(cachedCards.count) cached cards")
     }
 
     init(
@@ -31,7 +51,7 @@ final class DashboardStore: ObservableObject {
     ) {
         self.composer = composer
         self.cacheStore = cacheStore
-        self.cards = previewCards
+        self.cards = Self.cardsForDisplay(previewCards)
         self.isLoading = isLoading
         self.lastUpdated = lastUpdated
         self.lastSuccessfulRefresh = lastSuccessfulRefresh
@@ -40,7 +60,7 @@ final class DashboardStore: ObservableObject {
     }
 
     func refreshIfNeeded() async {
-        guard cards.isEmpty else { return }
+        guard lastUpdated == nil else { return }
         await refresh()
     }
 
@@ -48,14 +68,33 @@ final class DashboardStore: ObservableObject {
         guard !isLoading else { return }
 
         isLoading = true
+        cards = Self.cardsForDisplay(cards)
+        dashboardLogger.info("Dashboard refresh started with \(self.cards.count) visible cards")
         defer { isLoading = false }
 
-        let snapshot = await composer.makeSnapshot(now: .now)
-        let mergedCards = merge(snapshot.cards)
+        let refreshDate = Date.now
+        async let localSnapshot = composer.makeLocalSnapshot(now: refreshDate)
+        let primarySnapshot = await composer.makePrimarySnapshot(now: refreshDate)
+
+        var warningMessages = [primarySnapshot.warning].compactMap { $0 }
+        var mergedCards = merge(primarySnapshot.cards)
         cards = mergedCards
-        warning = mergedWarning(base: snapshot.warning, cards: mergedCards)
-        lastUpdated = snapshot.generatedAt
+        warning = mergedWarning(base: warningMessages.joined(separator: " "), cards: mergedCards)
+        lastUpdated = primarySnapshot.generatedAt
         lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
+        dashboardLogger.info("Dashboard primary refresh published. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
+
+        let localCardSnapshot = await localSnapshot
+        if let warning = localCardSnapshot.warning {
+            warningMessages.append(warning)
+        }
+
+        mergedCards = merge([localCardSnapshot.card])
+        cards = mergedCards
+        warning = mergedWarning(base: warningMessages.joined(separator: " "), cards: mergedCards)
+        lastUpdated = localCardSnapshot.generatedAt
+        lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
+        dashboardLogger.info("Dashboard refresh finished. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
     }
 
     var hasCachedCards: Bool {
@@ -70,25 +109,28 @@ final class DashboardStore: ObservableObject {
     }
 
     private func merge(_ incomingCards: [TemperatureCard]) -> [TemperatureCard] {
-        var mergedCards: [TemperatureCard] = []
+        var mergedByKind = Dictionary(uniqueKeysWithValues: cards.map { ($0.kind, $0) })
 
         for card in incomingCards {
             if card.isAvailable {
                 let liveCard = withCachedState(card, isCached: false)
                 cachedCardsByKind[card.kind] = liveCard
-                mergedCards.append(liveCard)
+                mergedByKind[card.kind] = liveCard
+                dashboardLogger.info("Using live card for \(card.kind.rawValue)")
                 continue
             }
 
             if let cached = cachedCardsByKind[card.kind] {
-                mergedCards.append(withCachedState(cached, isCached: true))
+                mergedByKind[card.kind] = withCachedState(cached, isCached: true)
+                dashboardLogger.info("Using cached card for \(card.kind.rawValue)")
             } else {
-                mergedCards.append(card)
+                mergedByKind[card.kind] = card
+                dashboardLogger.error("No live or cached card available for \(card.kind.rawValue)")
             }
         }
 
         cacheStore.save(cards: Array(cachedCardsByKind.values))
-        return mergedCards
+        return Self.cardsForDisplay(TemperatureCardKind.allCases.compactMap { mergedByKind[$0] })
     }
 
     private func mergedWarning(base: String?, cards: [TemperatureCard]) -> String? {
@@ -123,6 +165,68 @@ final class DashboardStore: ObservableObject {
             location: card.location
         )
     }
+
+    private static func cardsForDisplay(_ cards: [TemperatureCard]) -> [TemperatureCard] {
+        let byKind = Dictionary(uniqueKeysWithValues: cards.map { ($0.kind, $0) })
+        return TemperatureCardKind.allCases.compactMap { byKind[$0] ?? placeholderCard(for: $0) }
+    }
+
+    private static func placeholderCard(for kind: TemperatureCardKind) -> TemperatureCard? {
+        switch kind {
+        case .mars:
+            TemperatureCard(
+                kind: .mars,
+                title: "Mars",
+                subtitle: "Curiosity at Gale Crater",
+                value: "--",
+                detail: "Refreshing Curiosity weather",
+                footnote: "Waiting for the latest official REMS range.",
+                lastUpdated: .now,
+                isAvailable: false,
+                isCached: false,
+                location: nil
+            )
+        case .earth:
+            TemperatureCard(
+                kind: .earth,
+                title: "Earth Match",
+                subtitle: "Finding a current city match",
+                value: "--",
+                detail: "Comparing Earth temperatures with Mars",
+                footnote: "Waiting for the latest current conditions.",
+                lastUpdated: .now,
+                isAvailable: false,
+                isCached: false,
+                location: nil
+            )
+        case .moon:
+            TemperatureCard(
+                kind: .moon,
+                title: "Moon Estimate",
+                subtitle: "Apollo 11 · Tranquility Base",
+                value: "--",
+                detail: "Calculating lunar local time",
+                footnote: "Waiting for the latest modeled estimate.",
+                lastUpdated: .now,
+                isAvailable: false,
+                isCached: false,
+                location: nil
+            )
+        case .local:
+            TemperatureCard(
+                kind: .local,
+                title: "Local",
+                subtitle: "Resolving your current weather",
+                value: "--",
+                detail: "Checking Apple location services and weather",
+                footnote: "Falling back to network location if needed.",
+                lastUpdated: .now,
+                isAvailable: false,
+                isCached: false,
+                location: nil
+            )
+        }
+    }
 }
 
 extension DashboardStore {
@@ -154,7 +258,7 @@ extension DashboardStore {
                     subtitle: "Reykjavik, Iceland",
                     value: "-16°C",
                     detail: "2°C difference from Mars right now",
-                    footnote: "Closest current city match from a broad global Open-Meteo sample.",
+                    footnote: "Closest current city match from a global sample via Apple Weather.",
                     lastUpdated: Date(),
                     isAvailable: true,
                     isCached: false,

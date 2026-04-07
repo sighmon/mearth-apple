@@ -1,6 +1,6 @@
 import Foundation
 
-enum TemperatureCardKind: String, Codable, Identifiable {
+enum TemperatureCardKind: String, CaseIterable, Codable, Identifiable {
     case mars
     case earth
     case moon
@@ -49,6 +49,12 @@ struct DashboardSnapshot {
     let warning: String?
 }
 
+struct DashboardCardSnapshot {
+    let generatedAt: Date
+    let card: TemperatureCard
+    let warning: String?
+}
+
 struct MarsConditions {
     let sol: Int
     let terrestrialDate: Date
@@ -67,6 +73,7 @@ struct EarthCityTemperature {
     let temperature: Double
     let latitude: Double
     let longitude: Double
+    let sourceNote: String
 }
 
 struct LocalConditions {
