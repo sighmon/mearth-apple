@@ -1,6 +1,6 @@
 import Foundation
 
-enum TemperatureCardKind: String, Identifiable {
+enum TemperatureCardKind: String, Codable, Identifiable {
     case mars
     case earth
     case moon
@@ -9,13 +9,13 @@ enum TemperatureCardKind: String, Identifiable {
     var id: String { rawValue }
 }
 
-enum CelestialBody: String {
+enum CelestialBody: String, Codable {
     case earth
     case mars
     case moon
 }
 
-struct CardLocation: Identifiable {
+struct CardLocation: Codable, Identifiable {
     let title: String
     let subtitle: String
     let body: CelestialBody
@@ -28,13 +28,16 @@ struct CardLocation: Identifiable {
     }
 }
 
-struct TemperatureCard: Identifiable {
+struct TemperatureCard: Codable, Identifiable {
     let kind: TemperatureCardKind
     let title: String
     let subtitle: String
     let value: String
     let detail: String
     let footnote: String
+    let lastUpdated: Date
+    let isAvailable: Bool
+    let isCached: Bool
     let location: CardLocation?
 
     var id: String { kind.id }

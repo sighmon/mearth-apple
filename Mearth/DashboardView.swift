@@ -103,29 +103,34 @@ struct DashboardView: View {
     }
 
     private var statusStrip: some View {
-        HStack(spacing: 12) {
-            Label(store.isLoading ? "Refreshing feeds" : "Data downloaded", systemImage: store.isLoading ? "dot.radiowaves.left.and.right" : "checkmark.seal.fill")
-                .font(.system(.subheadline, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Label(statusText, systemImage: statusSymbol)
+                    .font(.system(.subheadline, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
 
-            if let lastUpdated = store.lastUpdated {
-                Text("\(lastUpdated.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.system(.subheadline, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.3))
+                if let statusDate = statusDate {
+                    Text("\(statusDate.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(.subheadline, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
+
+                Spacer(minLength: 12)
             }
+            HStack() {
+                if let warning = store.warning {
+                    Text(warning)
+                        .font(.system(.footnote, weight: .medium))
+                        .foregroundStyle(.yellow)
+                }
 
-            Spacer(minLength: 12)
+                Spacer(minLength: 12)
+            }
         }
     }
 
     private var cardGrid: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let warning = store.warning {
-                Text(warning)
-                    .font(.system(.footnote, weight: .medium))
-                    .foregroundStyle(.yellow)
-            }
-
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(store.cards) { card in
                     Button {
@@ -162,6 +167,33 @@ struct DashboardView: View {
             endPoint: .bottom
         )
         .ignoresSafeArea()
+    }
+
+    private var statusText: String {
+        if store.isLoading {
+            return "Refreshing feeds"
+        }
+        if store.hasCachedCards {
+            return "Showing cached data"
+        }
+        return "Data downloaded"
+    }
+
+    private var statusSymbol: String {
+        if store.isLoading {
+            return "dot.radiowaves.left.and.right"
+        }
+        if store.hasCachedCards {
+            return "clock.arrow.trianglehead.counterclockwise.rotate.90"
+        }
+        return "checkmark.seal.fill"
+    }
+
+    private var statusDate: Date? {
+        if store.hasCachedCards {
+            return store.lastCachedResultDate
+        }
+        return store.lastUpdated
     }
 
     private var columns: [GridItem] {
@@ -293,6 +325,13 @@ private struct TemperatureCardView: View {
                     .font(.system(.footnote, weight: .medium))
                     .foregroundStyle(.white.opacity(0.68))
                     .fixedSize(horizontal: false, vertical: true)
+
+                if card.isCached {
+                    Text("Last successful result \(card.lastUpdated.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(.footnote, weight: .semibold))
+                        .foregroundStyle(.yellow.opacity(0.9))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(cardPadding)

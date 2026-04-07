@@ -28,6 +28,9 @@ struct DashboardComposer {
                     value: Self.temperatureString(mars.estimatedCurrentTemperature),
                     detail: "LMST \(Self.hourMinuteString(mars.localMeanSolarTime)) · latest REMS sol \(mars.sol)",
                     footnote: "Estimated from REMS range (\(Self.dateString(mars.terrestrialDate)) UTC, \(mars.season)).",
+                    lastUpdated: now,
+                    isAvailable: true,
+                    isCached: false,
                     location: CardLocation(
                         title: "Curiosity Rover",
                         subtitle: "Gale Crater, Mars",
@@ -50,6 +53,9 @@ struct DashboardComposer {
                         value: Self.temperatureString(earthMatch.temperature),
                         detail: "\(Self.temperatureDeltaString(delta)) from Mars right now",
                         footnote: "Closest current city match from a global sample.",
+                        lastUpdated: now,
+                        isAvailable: true,
+                        isCached: false,
                         location: CardLocation(
                             title: earthMatch.city,
                             subtitle: earthMatch.country,
@@ -70,6 +76,9 @@ struct DashboardComposer {
                         value: "--",
                         detail: "Open-Meteo did not return a usable comparison set.",
                         footnote: "Mars is still shown from Curiosity's official feed.",
+                        lastUpdated: now,
+                        isAvailable: false,
+                        isCached: false,
                         location: nil
                     )
                 )
@@ -84,6 +93,9 @@ struct DashboardComposer {
                     value: "--",
                     detail: "The official REMS endpoint did not return a usable payload.",
                     footnote: "This card uses CAB's Curiosity weather widget feed when it is reachable.",
+                    lastUpdated: now,
+                    isAvailable: false,
+                    isCached: false,
                     location: nil
                 )
             )
@@ -95,6 +107,9 @@ struct DashboardComposer {
                     value: "--",
                     detail: "A comparison city needs the Curiosity reading first.",
                     footnote: "Refresh again when the Mars feed is back.",
+                    lastUpdated: now,
+                    isAvailable: false,
+                    isCached: false,
                     location: nil
                 )
             )
@@ -109,6 +124,9 @@ struct DashboardComposer {
                 value: Self.temperatureString(moonEstimate.temperature),
                 detail: "Lunar local time \(Self.hourMinuteString(moonEstimate.localHour))",
                 footnote: "Estimated from lunar phase and solar angle at the landing site, not a live sensor feed.",
+                lastUpdated: now,
+                isAvailable: true,
+                isCached: false,
                 location: CardLocation(
                     title: "Apollo 11",
                     subtitle: "Tranquility Base, Moon",
@@ -130,6 +148,9 @@ struct DashboardComposer {
                     value: Self.temperatureString(local.temperature),
                     detail: "Current temperature near you",
                     footnote: local.sourceNote,
+                    lastUpdated: now,
+                    isAvailable: true,
+                    isCached: false,
                     location: CardLocation(
                         title: "Your Approximate Location",
                         subtitle: local.label,
@@ -150,6 +171,9 @@ struct DashboardComposer {
                     value: "--",
                     detail: "IP geolocation or local forecast lookup failed.",
                     footnote: "This card falls back to network location so it also works on Apple TV.",
+                    lastUpdated: now,
+                    isAvailable: false,
+                    isCached: false,
                     location: nil
                 )
             )
@@ -185,7 +209,7 @@ struct DashboardComposer {
 
 struct MarsWeatherService {
     private static let galeLongitudeEast = 137.4417
-    private let client = RemoteJSONClient()
+    private let client = RemoteJSONClient(timeoutIntervalForRequest: 40, timeoutIntervalForResource: 60)
 
     func fetchCurrentConditions(at now: Date) async throws -> MarsConditions {
         let url = URL(string: "http://cab.inta-csic.es/rems/wp-content/plugins/marsweather-widget/api.php")!
@@ -430,10 +454,10 @@ struct LocalWeatherService {
 struct RemoteJSONClient {
     private let session: URLSession
 
-    init() {
+    init(timeoutIntervalForRequest: TimeInterval = 20, timeoutIntervalForResource: TimeInterval = 30) {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 30
+        configuration.timeoutIntervalForRequest = timeoutIntervalForRequest
+        configuration.timeoutIntervalForResource = timeoutIntervalForResource
         session = URLSession(configuration: configuration)
     }
 
