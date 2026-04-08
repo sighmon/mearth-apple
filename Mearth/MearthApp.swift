@@ -6,7 +6,7 @@ import AppKit
 @main
 struct MearthApp: App {
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Mearth", id: MacWindowConfigurator.mainWindowID) {
             DashboardView()
 #if os(macOS)
                 .background(MacWindowConfigurator())
@@ -21,6 +21,9 @@ struct MearthApp: App {
 
 #if os(macOS)
 private struct MacWindowConfigurator: NSViewRepresentable {
+    static let mainWindowID = "main-window"
+    private static let autosaveName = "MearthMainWindow"
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
@@ -38,6 +41,13 @@ private struct MacWindowConfigurator: NSViewRepresentable {
     private func configureWindow(for view: NSView) {
         guard let window = view.window else {
             return
+        }
+
+        if window.identifier?.rawValue != Self.mainWindowID {
+            window.identifier = NSUserInterfaceItemIdentifier(Self.mainWindowID)
+        }
+        if window.frameAutosaveName.isEmpty {
+            window.setFrameAutosaveName(Self.autosaveName)
         }
 
         window.titleVisibility = .hidden
