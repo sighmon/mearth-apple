@@ -400,8 +400,8 @@ private enum DashboardAppearance {
     static let backgroundImageName = "mars-gale-crater"
     static let backgroundImageExtension = "jpg"
     static let backgroundImageSubdirectory = "images"
-    static let backgroundImageOpacity = 0.4
-    static let cardBackgroundOpacity = 0.6
+    static let backgroundImageOpacity = 0.5
+    static let cardBackgroundOpacity = 0.8
 }
 
 private struct LocalBackgroundImageView: View {
