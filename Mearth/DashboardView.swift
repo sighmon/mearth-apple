@@ -1,6 +1,11 @@
 import Combine
 import MapKit
 import SwiftUI
+#if os(macOS)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct DashboardView: View {
     @StateObject private var store = DashboardStore()
@@ -16,6 +21,7 @@ struct DashboardView: View {
         GeometryReader { proxy in
             ZStack {
                 background
+                    .frame(width: proxy.size.width, height: proxy.size.height)
 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -92,8 +98,8 @@ struct DashboardView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(white: 0.18),
-                            Color(white: 0.08),
+                            Color(white: 0.18).opacity(DashboardAppearance.cardBackgroundOpacity),
+                            Color(white: 0.08).opacity(DashboardAppearance.cardBackgroundOpacity),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -158,14 +164,25 @@ struct DashboardView: View {
     }
 
     private var background: some View {
-        LinearGradient(
-            colors: [
-                Color(white: 0.16),
-                .black,
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+        ZStack {
+            Color.black
+
+            LocalBackgroundImageView(
+                resourceName: DashboardAppearance.backgroundImageName,
+                resourceExtension: DashboardAppearance.backgroundImageExtension,
+                subdirectory: DashboardAppearance.backgroundImageSubdirectory
+            )
+                .opacity(DashboardAppearance.backgroundImageOpacity)
+
+            LinearGradient(
+                colors: [
+                    Color(white: 0.08).opacity(0.3),
+                    .black.opacity(0.88),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
         .ignoresSafeArea()
     }
 
@@ -340,7 +357,7 @@ private struct TemperatureCardView: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: style.colors,
+                        colors: style.colors.map { $0.opacity(DashboardAppearance.cardBackgroundOpacity) },
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -369,6 +386,86 @@ private struct TemperatureCardView: View {
         #endif
     }
 
+}
+
+private enum DashboardAppearance {
+    // Development tuning controls for the dashboard chrome.
+    static let backgroundImageName = "mars-gale-crater"
+    static let backgroundImageExtension = "jpg"
+    static let backgroundImageSubdirectory = "images"
+    static let backgroundImageOpacity = 0.4
+    static let cardBackgroundOpacity = 0.6
+}
+
+private struct LocalBackgroundImageView: View {
+    let resourceName: String
+    let resourceExtension: String
+    let subdirectory: String?
+
+    var body: some View {
+        Group {
+            if let image {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+            }
+        }
+    }
+
+    private var image: Image? {
+        guard let url = imageURL else {
+            return nil
+        }
+        #if os(macOS)
+        guard let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+        return Image(nsImage: image)
+        #elseif canImport(UIKit)
+        guard let image = UIImage(contentsOfFile: url.path) else {
+            return nil
+        }
+        return Image(uiImage: image)
+        #else
+        return nil
+        #endif
+    }
+
+    private var imageURL: URL? {
+        let bundles = [Bundle.main] + Bundle.allBundles + Bundle.allFrameworks
+        for bundle in bundles {
+            if let url = bundle.url(forResource: resourceName, withExtension: resourceExtension) {
+                return url
+            }
+            if let url = bundle.url(
+                forResource: resourceName,
+                withExtension: resourceExtension,
+                subdirectory: subdirectory
+            ) {
+                return url
+            }
+        }
+
+        let sourceFileURL = URL(fileURLWithPath: #filePath)
+        let sourceDirectoryURL = sourceFileURL.deletingLastPathComponent()
+        if let subdirectory {
+            let candidate = sourceDirectoryURL
+                .appending(path: subdirectory, directoryHint: .isDirectory)
+                .appending(path: "\(resourceName).\(resourceExtension)")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        let directCandidate = sourceDirectoryURL.appending(path: "\(resourceName).\(resourceExtension)")
+        if FileManager.default.fileExists(atPath: directCandidate.path) {
+            return directCandidate
+        }
+
+        return nil
+    }
 }
 
 private struct CardStyle {
