@@ -8,6 +8,7 @@ import UIKit
 #endif
 
 struct DashboardView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = DashboardStore()
     @State private var selectedLocation: CardLocation?
     private let refreshTimer = Timer.publish(every: 900, on: .main, in: .common).autoconnect()
@@ -48,6 +49,12 @@ struct DashboardView: View {
         .onReceive(refreshTimer) { _ in
             Task {
                 await store.refresh()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task {
+                await store.refreshLocalCardIfNeeded()
             }
         }
         .sheet(item: $selectedLocation) { location in

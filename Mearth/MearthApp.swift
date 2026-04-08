@@ -6,16 +6,18 @@ import AppKit
 @main
 struct MearthApp: App {
     var body: some Scene {
+        #if os(macOS)
         WindowGroup("Mearth", id: MacWindowConfigurator.mainWindowID) {
             DashboardView()
-#if os(macOS)
                 .background(MacWindowConfigurator())
-#endif
         }
-#if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
-#endif
+        #else
+        WindowGroup {
+            DashboardView()
+        }
+        #endif
     }
 }
 

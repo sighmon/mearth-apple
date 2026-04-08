@@ -215,9 +215,9 @@ struct DashboardComposer {
     }
 
     private func loadLocalResult() async -> Result<LocalConditions, Error> {
-        weatherLogger.info("Starting local weather task with a 6 second dashboard budget")
+        weatherLogger.info("Starting local weather task with a 20 second dashboard budget")
         do {
-            return .success(try await withTimeout(seconds: 6) {
+            return .success(try await withTimeout(seconds: 20) {
                 try await localService.fetchCurrentConditions()
             })
         } catch {
@@ -585,8 +585,8 @@ private struct DeviceLocationLocalWeatherService {
     func fetchCurrentConditions() async throws -> LocalConditions {
         let location: CLLocation
         do {
-            location = try await withTimeout(seconds: 4) {
-                try await DeviceLocationProvider().requestCurrentLocation()
+            location = try await withTimeout(seconds: 12) {
+                try await requestCurrentDeviceLocation()
             }
         } catch {
             weatherLogger.error("Device location lookup failed before weather lookup: \(error.localizedDescription)")
@@ -639,6 +639,12 @@ private struct DeviceLocationLocalWeatherService {
             location.coordinate.longitude
         )
     }
+}
+
+@MainActor
+private func requestCurrentDeviceLocation() async throws -> CLLocation {
+    let provider = DeviceLocationProvider()
+    return try await provider.requestCurrentLocation()
 }
 
 private final class DeviceLocationProvider: NSObject, CLLocationManagerDelegate {

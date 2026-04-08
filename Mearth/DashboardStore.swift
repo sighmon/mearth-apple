@@ -19,6 +19,8 @@ final class DashboardStore: ObservableObject {
     private let composer: DashboardComposer
     private let cacheStore: DashboardCacheStore
     private var cachedCardsByKind: [TemperatureCardKind: TemperatureCard]
+    private var primaryWarning: String?
+    private var localWarning: String?
 
     init(composer: DashboardComposer = DashboardComposer(), cacheStore: DashboardCacheStore = DashboardCacheStore()) {
         self.composer = composer
@@ -31,6 +33,7 @@ final class DashboardStore: ObservableObject {
             self.lastUpdated = previewCards.map(\.lastUpdated).max()
             self.lastSuccessfulRefresh = self.lastUpdated
             self.warning = "Preview data only."
+            self.primaryWarning = self.warning
             dashboardLogger.info("DashboardStore initialized in preview development mode")
             return
         }
@@ -73,6 +76,7 @@ final class DashboardStore: ObservableObject {
         self.lastUpdated = lastUpdated
         self.lastSuccessfulRefresh = lastSuccessfulRefresh
         self.warning = warning
+        self.primaryWarning = warning
         self.cachedCardsByKind = Dictionary(uniqueKeysWithValues: previewCards.map { ($0.kind, $0) })
     }
 
@@ -92,6 +96,8 @@ final class DashboardStore: ObservableObject {
             warning = "Preview data only."
             lastUpdated = previewCards.map(\.lastUpdated).max()
             lastSuccessfulRefresh = lastUpdated
+            primaryWarning = warning
+            localWarning = nil
             cachedCardsByKind = Dictionary(uniqueKeysWithValues: previewCards.map { ($0.kind, $0) })
             dashboardLogger.info("Dashboard refresh served preview development data")
             return
@@ -105,28 +111,48 @@ final class DashboardStore: ObservableObject {
         defer { isLoading = false }
 
         let refreshDate = Date.now
+        localWarning = nil
         async let localSnapshot = composer.makeLocalSnapshot(now: refreshDate)
         let primarySnapshot = await composer.makePrimarySnapshot(now: refreshDate)
 
-        var warningMessages = [primarySnapshot.warning].compactMap { $0 }
+        primaryWarning = primarySnapshot.warning
         var mergedCards = merge(primarySnapshot.cards)
         cards = mergedCards
-        warning = mergedWarning(base: warningMessages.joined(separator: " "), cards: mergedCards)
+        warning = mergedWarning(base: combinedBaseWarning, cards: mergedCards)
         lastUpdated = primarySnapshot.generatedAt
         lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
         dashboardLogger.info("Dashboard primary refresh published. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
 
         let localCardSnapshot = await localSnapshot
-        if let warning = localCardSnapshot.warning {
-            warningMessages.append(warning)
-        }
+        localWarning = localCardSnapshot.warning
 
         mergedCards = merge([localCardSnapshot.card])
         cards = mergedCards
-        warning = mergedWarning(base: warningMessages.joined(separator: " "), cards: mergedCards)
+        warning = mergedWarning(base: combinedBaseWarning, cards: mergedCards)
         lastUpdated = localCardSnapshot.generatedAt
         lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
         dashboardLogger.info("Dashboard refresh finished. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
+    }
+
+    func refreshLocalCardIfNeeded() async {
+        if DashboardDevelopmentOptions.usePreviewData || isLoading {
+            return
+        }
+
+        guard let localCard = cards.first(where: { $0.kind == .local }), !localCard.isAvailable else {
+            return
+        }
+
+        dashboardLogger.info("Retrying local card refresh")
+        let localSnapshot = await composer.makeLocalSnapshot(now: .now)
+        localWarning = localSnapshot.warning
+
+        let mergedCards = merge([localSnapshot.card])
+        cards = mergedCards
+        warning = mergedWarning(base: combinedBaseWarning, cards: mergedCards)
+        lastUpdated = localSnapshot.generatedAt
+        lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
+        dashboardLogger.info("Local card retry finished. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
     }
 
     var hasCachedCards: Bool {
@@ -201,6 +227,13 @@ final class DashboardStore: ObservableObject {
     private static func cardsForDisplay(_ cards: [TemperatureCard]) -> [TemperatureCard] {
         let byKind = Dictionary(uniqueKeysWithValues: cards.map { ($0.kind, $0) })
         return TemperatureCardKind.allCases.compactMap { byKind[$0] ?? placeholderCard(for: $0) }
+    }
+
+    private var combinedBaseWarning: String? {
+        let warnings = [primaryWarning, localWarning]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        return warnings.isEmpty ? nil : warnings.joined(separator: " ")
     }
 
     private static func placeholderCard(for kind: TemperatureCardKind) -> TemperatureCard? {
