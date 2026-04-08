@@ -171,12 +171,12 @@ struct DashboardView: View {
 
     private var statusText: String {
         if store.isLoading {
-            return "Refreshing feeds"
+            return "Refreshing"
         }
         if store.hasCachedCards {
-            return "Showing cached data"
+            return "Cached"
         }
-        return "Data downloaded"
+        return "Data"
     }
 
     private var statusSymbol: String {

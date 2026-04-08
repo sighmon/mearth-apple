@@ -3,6 +3,11 @@ import OSLog
 
 private let dashboardLogger = Logger(subsystem: "com.sighmon.mearth", category: "Dashboard")
 
+enum DashboardDevelopmentOptions {
+    // Flip this to true during development to bypass all live API calls.
+    static let usePreviewData = false
+}
+
 @MainActor
 final class DashboardStore: ObservableObject {
     @Published private(set) var cards: [TemperatureCard] = []
@@ -18,6 +23,18 @@ final class DashboardStore: ObservableObject {
     init(composer: DashboardComposer = DashboardComposer(), cacheStore: DashboardCacheStore = DashboardCacheStore()) {
         self.composer = composer
         self.cacheStore = cacheStore
+
+        if DashboardDevelopmentOptions.usePreviewData {
+            let previewCards = Self.developmentPreviewCards(referenceDate: .now)
+            self.cachedCardsByKind = Dictionary(uniqueKeysWithValues: previewCards.map { ($0.kind, $0) })
+            self.cards = Self.cardsForDisplay(previewCards)
+            self.lastUpdated = previewCards.map(\.lastUpdated).max()
+            self.lastSuccessfulRefresh = self.lastUpdated
+            self.warning = "Preview data only."
+            dashboardLogger.info("DashboardStore initialized in preview development mode")
+            return
+        }
+
         let cachedCards = cacheStore.loadCards()
         self.cachedCardsByKind = Dictionary(uniqueKeysWithValues: cachedCards.map { ($0.kind, $0) })
         self.cards = Self.cardsForDisplay(
@@ -60,11 +77,26 @@ final class DashboardStore: ObservableObject {
     }
 
     func refreshIfNeeded() async {
+        if DashboardDevelopmentOptions.usePreviewData {
+            await refresh()
+            return
+        }
         guard lastUpdated == nil else { return }
         await refresh()
     }
 
     func refresh() async {
+        if DashboardDevelopmentOptions.usePreviewData {
+            let previewCards = Self.developmentPreviewCards(referenceDate: .now)
+            cards = Self.cardsForDisplay(previewCards)
+            warning = "Preview data only."
+            lastUpdated = previewCards.map(\.lastUpdated).max()
+            lastSuccessfulRefresh = lastUpdated
+            cachedCardsByKind = Dictionary(uniqueKeysWithValues: previewCards.map { ($0.kind, $0) })
+            dashboardLogger.info("Dashboard refresh served preview development data")
+            return
+        }
+
         guard !isLoading else { return }
 
         isLoading = true
@@ -230,86 +262,90 @@ final class DashboardStore: ObservableObject {
 }
 
 extension DashboardStore {
+    static func developmentPreviewCards(referenceDate: Date = Date()) -> [TemperatureCard] {
+        [
+            TemperatureCard(
+                kind: .mars,
+                title: "Mars",
+                subtitle: "Curiosity at Gale Crater",
+                value: "-18°C",
+                detail: "LMST 14:42 · latest REMS sol 4849",
+                footnote: "Estimated from the latest official REMS range.",
+                lastUpdated: referenceDate,
+                isAvailable: true,
+                isCached: false,
+                location: CardLocation(
+                    title: "Curiosity Rover",
+                    subtitle: "Gale Crater, Mars",
+                    body: .mars,
+                    latitude: -4.5895,
+                    longitude: 137.4417,
+                    note: "Preview planetary locator."
+                )
+            ),
+            TemperatureCard(
+                kind: .earth,
+                title: "Earth Match",
+                subtitle: "Reykjavik, Iceland",
+                value: "-16°C",
+                detail: "2°C difference from Mars right now",
+                footnote: "Closest current city match from a global sample via Apple Weather.",
+                lastUpdated: referenceDate,
+                isAvailable: true,
+                isCached: false,
+                location: CardLocation(
+                    title: "Reykjavik",
+                    subtitle: "Iceland",
+                    body: .earth,
+                    latitude: 64.1466,
+                    longitude: -21.9426,
+                    note: "Preview Apple Maps location."
+                )
+            ),
+            TemperatureCard(
+                kind: .moon,
+                title: "Moon Estimate",
+                subtitle: "Apollo 11 · Tranquility Base",
+                value: "96°C",
+                detail: "Lunar local time 11:08",
+                footnote: "Modeled from lunar phase and solar angle at the landing site, not a live sensor feed.",
+                lastUpdated: referenceDate,
+                isAvailable: true,
+                isCached: false,
+                location: CardLocation(
+                    title: "Apollo 11",
+                    subtitle: "Tranquility Base, Moon",
+                    body: .moon,
+                    latitude: 0.6741,
+                    longitude: 23.4729,
+                    note: "Preview lunar locator."
+                )
+            ),
+            TemperatureCard(
+                kind: .local,
+                title: "Local",
+                subtitle: "Adelaide, South Australia, Australia",
+                value: "22°C",
+                detail: "Current temperature near you",
+                footnote: "Approximate network location from ipapi.co, then current Open-Meteo conditions.",
+                lastUpdated: referenceDate,
+                isAvailable: true,
+                isCached: false,
+                location: CardLocation(
+                    title: "Your Approximate Location",
+                    subtitle: "Adelaide, South Australia, Australia",
+                    body: .earth,
+                    latitude: -34.9285,
+                    longitude: 138.6007,
+                    note: "Preview Apple Maps location."
+                )
+            ),
+        ]
+    }
+
     static var preview: DashboardStore {
         DashboardStore(
-            previewCards: [
-                TemperatureCard(
-                    kind: .mars,
-                    title: "Mars",
-                    subtitle: "Curiosity at Gale Crater",
-                    value: "-18°C",
-                    detail: "LMST 14:42 · latest REMS sol 4849",
-                    footnote: "Estimated from the latest official REMS range.",
-                    lastUpdated: Date(),
-                    isAvailable: true,
-                    isCached: false,
-                    location: CardLocation(
-                        title: "Curiosity Rover",
-                        subtitle: "Gale Crater, Mars",
-                        body: .mars,
-                        latitude: -4.5895,
-                        longitude: 137.4417,
-                        note: "Preview planetary locator."
-                    )
-                ),
-                TemperatureCard(
-                    kind: .earth,
-                    title: "Earth Match",
-                    subtitle: "Reykjavik, Iceland",
-                    value: "-16°C",
-                    detail: "2°C difference from Mars right now",
-                    footnote: "Closest current city match from a global sample via Apple Weather.",
-                    lastUpdated: Date(),
-                    isAvailable: true,
-                    isCached: false,
-                    location: CardLocation(
-                        title: "Reykjavik",
-                        subtitle: "Iceland",
-                        body: .earth,
-                        latitude: 64.1466,
-                        longitude: -21.9426,
-                        note: "Preview Apple Maps location."
-                    )
-                ),
-                TemperatureCard(
-                    kind: .moon,
-                    title: "Moon Estimate",
-                    subtitle: "Apollo 11 · Tranquility Base",
-                    value: "96°C",
-                    detail: "Lunar local time 11:08",
-                    footnote: "Modeled from lunar phase and solar angle at the landing site, not a live sensor feed.",
-                    lastUpdated: Date(),
-                    isAvailable: true,
-                    isCached: false,
-                    location: CardLocation(
-                        title: "Apollo 11",
-                        subtitle: "Tranquility Base, Moon",
-                        body: .moon,
-                        latitude: 0.6741,
-                        longitude: 23.4729,
-                        note: "Preview lunar locator."
-                    )
-                ),
-                TemperatureCard(
-                    kind: .local,
-                    title: "Local",
-                    subtitle: "Adelaide, South Australia, Australia",
-                    value: "22°C",
-                    detail: "Current temperature near you",
-                    footnote: "Approximate network location from ipapi.co, then current Open-Meteo conditions.",
-                    lastUpdated: Date(),
-                    isAvailable: true,
-                    isCached: false,
-                    location: CardLocation(
-                        title: "Your Approximate Location",
-                        subtitle: "Adelaide, South Australia, Australia",
-                        body: .earth,
-                        latitude: -34.9285,
-                        longitude: 138.6007,
-                        note: "Preview Apple Maps location."
-                    )
-                ),
-            ],
+            previewCards: developmentPreviewCards(),
             lastUpdated: Date(),
             lastSuccessfulRefresh: Date(),
             warning: "Preview data only."
