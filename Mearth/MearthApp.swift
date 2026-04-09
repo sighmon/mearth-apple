@@ -10,9 +10,9 @@ struct MearthApp: App {
         WindowGroup("Mearth", id: MacWindowConfigurator.mainWindowID) {
             DashboardView()
                 .background(MacWindowConfigurator())
+                .modifier(MacWindowChromeModifier())
         }
         .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unified(showsTitle: false))
         #else
         WindowGroup {
             DashboardView()
@@ -22,6 +22,19 @@ struct MearthApp: App {
 }
 
 #if os(macOS)
+private struct MacWindowChromeModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content
+                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+                .toolbar(removing: .title)
+        } else {
+            content
+        }
+    }
+}
+
 private struct MacWindowConfigurator: NSViewRepresentable {
     static let mainWindowID = "main-window"
     private static let autosaveName = "MearthMainWindow"
@@ -55,7 +68,6 @@ private struct MacWindowConfigurator: NSViewRepresentable {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.toolbar = nil
         window.styleMask.insert(.fullSizeContentView)
     }
 }
