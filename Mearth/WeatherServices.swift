@@ -32,8 +32,12 @@ struct DashboardComposer {
                     title: "Mars",
                     subtitle: "Curiosity at Gale Crater",
                     value: Self.temperatureString(mars.estimatedCurrentTemperature),
+                    supportingMetrics: [
+                        Self.uvMetric(Self.marsUVIndexEquivalent(mars)),
+                        Self.radiationMetric(Self.marsRadiationDoseRate),
+                    ],
                     detail: "LMST \(Self.hourMinuteString(mars.localMeanSolarTime)) · latest REMS sol \(mars.sol)",
-                    footnote: "Estimated from REMS range (\(Self.dateString(mars.terrestrialDate)) UTC, \(mars.season)).",
+                    footnote: "REMS weather, modeled UV, RAD baseline.",
                     lastUpdated: now,
                     isAvailable: true,
                     isCached: false,
@@ -58,8 +62,12 @@ struct DashboardComposer {
                         title: "Earth Match",
                         subtitle: "\(earthMatch.city), \(earthMatch.country)",
                         value: Self.temperatureString(earthMatch.temperature),
+                        supportingMetrics: [
+                            Self.uvMetric(earthMatch.uvIndex),
+                            Self.radiationMetric(Self.earthRadiationDoseRate),
+                        ],
                         detail: "\(Self.temperatureDeltaString(delta)) from Mars right now",
-                        footnote: earthMatch.sourceNote,
+                        footnote: "Live weather and UV, Earth background radiation.",
                         lastUpdated: now,
                         isAvailable: true,
                         isCached: false,
@@ -82,6 +90,7 @@ struct DashboardComposer {
                         title: "Earth Match",
                         subtitle: "Global city sample unavailable",
                         value: "--",
+                        supportingMetrics: [],
                         detail: "Open-Meteo did not return a usable comparison set.",
                         footnote: "Mars is still shown from Curiosity's official feed.",
                         lastUpdated: now,
@@ -100,6 +109,7 @@ struct DashboardComposer {
                     title: "Mars",
                     subtitle: "Curiosity feed unavailable",
                     value: "--",
+                    supportingMetrics: [],
                     detail: "The official REMS endpoint did not return a usable payload.",
                     footnote: "This card uses CAB's Curiosity weather widget feed when it is reachable.",
                     lastUpdated: now,
@@ -114,6 +124,7 @@ struct DashboardComposer {
                     title: "Earth Match",
                     subtitle: "Waiting on the Mars reference temperature",
                     value: "--",
+                    supportingMetrics: [],
                     detail: "A comparison city needs the Curiosity reading first.",
                     footnote: "Refresh again when the Mars feed is back.",
                     lastUpdated: now,
@@ -131,8 +142,12 @@ struct DashboardComposer {
                 title: "Moon Estimate",
                 subtitle: "Apollo 11 · Tranquility Base",
                 value: Self.temperatureString(moonEstimate.temperature),
+                supportingMetrics: [
+                    Self.uvMetric(Self.moonUVIndexEquivalent(moonEstimate)),
+                    Self.radiationMetric(Self.moonRadiationDoseRate),
+                ],
                 detail: "Lunar local time \(Self.hourMinuteString(moonEstimate.localHour))",
-                footnote: "Estimated from lunar phase and solar angle at the landing site, not a live sensor feed.",
+                footnote: "Modeled temperature and UV, Apollo-era radiation baseline.",
                 lastUpdated: now,
                 isAvailable: true,
                 isCached: false,
@@ -167,8 +182,12 @@ struct DashboardComposer {
                     title: "Local",
                     subtitle: local.label,
                     value: Self.temperatureString(local.temperature),
+                    supportingMetrics: [
+                        Self.uvMetric(local.uvIndex),
+                        Self.radiationMetric(Self.earthRadiationDoseRate),
+                    ],
                     detail: "Current temperature near you",
-                    footnote: local.sourceNote,
+                    footnote: "Live local weather and UV, Earth background radiation.",
                     lastUpdated: now,
                     isAvailable: true,
                     isCached: false,
@@ -192,6 +211,7 @@ struct DashboardComposer {
                     title: "Local",
                     subtitle: "Current location unavailable",
                     value: "--",
+                    supportingMetrics: [],
                     detail: "IP geolocation or local forecast lookup failed.",
                     footnote: "This card falls back to network location so it also works on Apple TV.",
                     lastUpdated: now,
@@ -236,6 +256,89 @@ struct DashboardComposer {
 
     private static func dateString(_ date: Date) -> String {
         date.formatted(.dateTime.year().month(.abbreviated).day())
+    }
+
+    private static let earthRadiationDoseRate = 0.06
+    private static let marsRadiationDoseRate = 27.8
+    private static let moonRadiationDoseRate = 32.0
+
+    private static func uvMetric(_ value: Double?) -> CardSupportingMetric {
+        CardSupportingMetric(label: "UV INDEX", value: uvIndexString(value))
+    }
+
+    private static func radiationMetric(_ value: Double) -> CardSupportingMetric {
+        CardSupportingMetric(label: "RADIATION", value: radiationString(value))
+    }
+
+    private static func uvIndexString(_ value: Double?) -> String {
+        guard let value else {
+            return "--"
+        }
+        return "\(String(format: "%.1f", value))"
+    }
+
+    private static func radiationString(_ value: Double) -> String {
+        "\(String(format: "%.2f", value)) µSv/h"
+    }
+
+    private static func marsUVIndexEquivalent(_ mars: MarsConditions) -> Double? {
+        let peakIndex = marsPeakUVIndex(for: mars.uvIndexCategory)
+        return daylightUVIndex(
+            peakIndex: peakIndex,
+            localHour: mars.localMeanSolarTime,
+            sunrise: mars.sunriseHour,
+            sunset: mars.sunsetHour,
+            exponent: 0.92
+        )
+    }
+
+    private static func moonUVIndexEquivalent(_ moon: MoonEstimate) -> Double? {
+        daylightUVIndex(
+            peakIndex: 12.0,
+            localHour: moon.localHour,
+            sunrise: 6,
+            sunset: 18,
+            exponent: 0.9
+        )
+    }
+
+    private static func marsPeakUVIndex(for category: String) -> Double? {
+        switch category.lowercased().replacingOccurrences(of: "_", with: " ") {
+        case "low":
+            return 1.5
+        case "moderate":
+            return 4.0
+        case "high":
+            return 6.5
+        case "very high":
+            return 9.0
+        case "extreme":
+            return 11.0
+        default:
+            return nil
+        }
+    }
+
+    private static func daylightUVIndex(
+        peakIndex: Double?,
+        localHour: Double,
+        sunrise: Double,
+        sunset: Double,
+        exponent: Double
+    ) -> Double? {
+        guard let peakIndex else {
+            return nil
+        }
+
+        let normalizedTime = positiveModulo(localHour, 24)
+        guard normalizedTime >= sunrise && normalizedTime <= sunset else {
+            return 0
+        }
+
+        let daylightLength = max(0.1, sunset - sunrise)
+        let progress = (normalizedTime - sunrise) / daylightLength
+        let sunFactor = pow(max(0, sin(.pi * progress)), exponent)
+        return peakIndex * sunFactor
     }
 
     private static func hourMinuteString(_ hourValue: Double) -> String {
@@ -284,7 +387,8 @@ struct MarsWeatherService {
             minTemperature: minTemp,
             maxTemperature: maxTemp,
             localMeanSolarTime: lmst,
-            estimatedCurrentTemperature: estimate
+            estimatedCurrentTemperature: estimate,
+            uvIndexCategory: latest.localUVIrradianceIndex
         )
     }
 
@@ -338,7 +442,7 @@ private struct OpenMeteoEarthTemperatureService {
         components.queryItems = [
             URLQueryItem(name: "latitude", value: Self.cities.map { Self.coordinateString($0.latitude) }.joined(separator: ",")),
             URLQueryItem(name: "longitude", value: Self.cities.map { Self.coordinateString($0.longitude) }.joined(separator: ",")),
-            URLQueryItem(name: "current", value: "temperature_2m"),
+            URLQueryItem(name: "current", value: "temperature_2m,uv_index"),
             URLQueryItem(name: "temperature_unit", value: "celsius"),
         ]
 
@@ -353,6 +457,7 @@ private struct OpenMeteoEarthTemperatureService {
                 city: city.name,
                 country: city.country,
                 temperature: response.current.temperature2M,
+                uvIndex: response.current.uvIndex,
                 latitude: city.latitude,
                 longitude: city.longitude,
                 sourceNote: "Closest current city match from a global sample via Open-Meteo."
@@ -491,6 +596,7 @@ private struct NetworkFallbackLocalWeatherService {
             return LocalConditions(
                 label: label,
                 temperature: forecast.current.temperature2M,
+                uvIndex: forecast.current.uvIndex,
                 sourceNote: "Current device location via Apple Location Services, temperature via Open-Meteo fallback.",
                 latitude: preferredLocation.coordinate.latitude,
                 longitude: preferredLocation.coordinate.longitude
@@ -503,6 +609,7 @@ private struct NetworkFallbackLocalWeatherService {
         return LocalConditions(
             label: resolved.label,
             temperature: forecast.current.temperature2M,
+            uvIndex: forecast.current.uvIndex,
             sourceNote: sourceNote(reason: reason),
             latitude: resolved.latitude,
             longitude: resolved.longitude
@@ -542,7 +649,7 @@ private struct NetworkFallbackLocalWeatherService {
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(format: "%.4f", latitude)),
             URLQueryItem(name: "longitude", value: String(format: "%.4f", longitude)),
-            URLQueryItem(name: "current", value: "temperature_2m"),
+            URLQueryItem(name: "current", value: "temperature_2m,uv_index"),
             URLQueryItem(name: "temperature_unit", value: "celsius"),
         ]
 
@@ -625,6 +732,7 @@ private struct DeviceLocationLocalWeatherService {
             return LocalConditions(
                 label: label,
                 temperature: current.temperature.converted(to: .celsius).value,
+                uvIndex: nil,
                 sourceNote: "Current device location via Apple Location Services, weather via WeatherKit.",
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude
@@ -852,6 +960,7 @@ private struct MarsSolPayload: Decodable {
     let season: String
     let minTemp: String
     let maxTemp: String
+    let localUVIrradianceIndex: String
     let sunrise: String
     let sunset: String
 
@@ -861,6 +970,7 @@ private struct MarsSolPayload: Decodable {
         case season
         case minTemp = "min_temp"
         case maxTemp = "max_temp"
+        case localUVIrradianceIndex = "local_uv_irradiance_index"
         case sunrise
         case sunset
     }
@@ -905,9 +1015,11 @@ private struct OpenMeteoForecastResponse: Decodable {
 
     struct Current: Decodable {
         let temperature2M: Double
+        let uvIndex: Double?
 
         enum CodingKeys: String, CodingKey {
             case temperature2M = "temperature_2m"
+            case uvIndex = "uv_index"
         }
     }
 

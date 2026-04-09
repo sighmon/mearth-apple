@@ -10,7 +10,7 @@ import UIKit
 struct DashboardView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = DashboardStore()
-    @State private var selectedLocation: CardLocation?
+    @State private var selectedCard: TemperatureCard?
     private let refreshTimer = Timer.publish(every: 900, on: .main, in: .common).autoconnect()
 
     @MainActor
@@ -57,8 +57,8 @@ struct DashboardView: View {
                 await store.refreshLocalCardIfNeeded()
             }
         }
-        .sheet(item: $selectedLocation) { location in
-            LocationDetailSheet(location: location)
+        .sheet(item: $selectedCard) { card in
+            LocationDetailSheet(card: card)
         }
     }
 
@@ -147,7 +147,7 @@ struct DashboardView: View {
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(store.cards) { card in
                     Button {
-                        selectedLocation = card.location
+                        selectedCard = card
                     } label: {
                         TemperatureCardView(card: card)
                     }
@@ -339,6 +339,24 @@ private struct TemperatureCardView: View {
                 .font(.system(size: 48, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(.white)
+
+            if !card.supportingMetrics.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(card.supportingMetrics) { metric in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(metric.label)
+                                .font(.system(.caption, weight: .bold))
+                                .tracking(1.2)
+                                .foregroundStyle(.white.opacity(0.56))
+
+                            Text(metric.value)
+                                .font(.system(.subheadline, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(.white.opacity(0.9))
+                        }
+                    }
+                }
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(card.detail)
