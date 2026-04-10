@@ -594,17 +594,34 @@ struct MoonTemperatureEstimator {
     private let apollo11 = ApolloSite(name: "Tranquility Base", latitude: 0.6741, longitude: 23.4729)
     private let synodicMonth = 29.530588853
     private let referenceNewMoon = ISO8601DateFormatter().date(from: "2000-01-06T18:14:00Z")!
+    private let minimumTemperature = -173.0
+    private let maximumTemperature = 127.0
+    private let peakTemperatureHour = 14.0
 
     func estimate(at date: Date) -> MoonEstimate {
         let ageDays = positiveModulo(date.timeIntervalSince(referenceNewMoon) / 86_400, synodicMonth)
         let phaseDegrees = (ageDays / synodicMonth) * 360
         let hourAngle = signedModulo(phaseDegrees + apollo11.longitude - 180, 360)
-        let solarCosine = cos(hourAngle * .pi / 180)
-        let warmedCosine = max(0, solarCosine)
-        let temperature = -173 + pow(warmedCosine, 0.35) * 300
         let localHour = positiveModulo(12 + hourAngle / 15, 24)
+        let temperature = estimatedSurfaceTemperature(localHour: localHour)
 
         return MoonEstimate(temperature: temperature, localHour: localHour)
+    }
+
+    private func estimatedSurfaceTemperature(localHour: Double) -> Double {
+        let midpoint = (maximumTemperature + minimumTemperature) / 2
+        let amplitude = (maximumTemperature - minimumTemperature) / 2
+        let shiftedHour = positiveModulo(localHour - peakTemperatureHour, 24)
+        let cyclePosition = shiftedHour / 24
+        let thermalWave = cos(cyclePosition * 2 * .pi)
+
+        // Ease the thermal curve slightly so the surface lingers near the extremes
+        // without snapping to a perfectly flat lunar-night floor.
+        let smoothedWave = thermalWave >= 0
+            ? pow(thermalWave, 0.82)
+            : -pow(abs(thermalWave), 0.92)
+
+        return midpoint + amplitude * smoothedWave
     }
 }
 
