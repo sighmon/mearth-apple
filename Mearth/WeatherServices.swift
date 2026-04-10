@@ -195,7 +195,7 @@ struct DashboardComposer {
                     ],
                     sourceNote: local.sourceNote,
                     detail: "Current temperature near you",
-                    footnote: "Live local weather and UV, Earth background radiation.",
+                    footnote: " Weather and UV, Earth background radiation.",
                     lastUpdated: now,
                     isAvailable: true,
                     isCached: false,

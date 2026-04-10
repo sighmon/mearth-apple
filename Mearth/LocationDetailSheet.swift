@@ -292,14 +292,14 @@ struct LocationDetailSheet: View {
         case .local:
             return [
                 SourceLink(
-                    title: "Apple WeatherKit",
-                    url: URL(string: "https://developer.apple.com/weatherkit/")!,
-                    note: "Primary source for the local card's current weather and UV Index when Apple Weather is available."
+                    title: " Weather",
+                    url: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!,
+                    note: "Primary source for the local card's current weather and UV Index when  Weather is available."
                 ),
                 SourceLink(
                     title: "Open-Meteo Forecast API",
                     url: URL(string: "https://open-meteo.com/en/docs")!,
-                    note: "Fallback source for current local temperature and UV Index when Apple weather data is unavailable."
+                    note: "Fallback source for current local temperature and UV Index when  Weather data is unavailable."
                 ),
                 SourceLink(
                     title: "US EPA Radiation Sources and Doses",
