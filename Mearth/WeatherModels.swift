@@ -34,6 +34,8 @@ struct TemperatureCard: Codable, Identifiable {
     let subtitle: String
     let value: String
     let supportingMetrics: [CardSupportingMetric]
+    let sourceNote: String?
+    let earthComparisonCandidates: [EarthComparisonCandidate]
     let detail: String
     let footnote: String
     let lastUpdated: Date
@@ -49,6 +51,8 @@ struct TemperatureCard: Codable, Identifiable {
         case subtitle
         case value
         case supportingMetrics
+        case sourceNote
+        case earthComparisonCandidates
         case detail
         case footnote
         case lastUpdated
@@ -63,6 +67,8 @@ struct TemperatureCard: Codable, Identifiable {
         subtitle: String,
         value: String,
         supportingMetrics: [CardSupportingMetric] = [],
+        sourceNote: String? = nil,
+        earthComparisonCandidates: [EarthComparisonCandidate] = [],
         detail: String,
         footnote: String,
         lastUpdated: Date,
@@ -75,6 +81,8 @@ struct TemperatureCard: Codable, Identifiable {
         self.subtitle = subtitle
         self.value = value
         self.supportingMetrics = supportingMetrics
+        self.sourceNote = sourceNote
+        self.earthComparisonCandidates = earthComparisonCandidates
         self.detail = detail
         self.footnote = footnote
         self.lastUpdated = lastUpdated
@@ -90,6 +98,8 @@ struct TemperatureCard: Codable, Identifiable {
         subtitle = try container.decode(String.self, forKey: .subtitle)
         value = try container.decode(String.self, forKey: .value)
         supportingMetrics = try container.decodeIfPresent([CardSupportingMetric].self, forKey: .supportingMetrics) ?? []
+        sourceNote = try container.decodeIfPresent(String.self, forKey: .sourceNote)
+        earthComparisonCandidates = try container.decodeIfPresent([EarthComparisonCandidate].self, forKey: .earthComparisonCandidates) ?? []
         detail = try container.decode(String.self, forKey: .detail)
         footnote = try container.decode(String.self, forKey: .footnote)
         lastUpdated = try container.decode(Date.self, forKey: .lastUpdated)
@@ -104,6 +114,19 @@ struct CardSupportingMetric: Codable, Identifiable, Hashable {
     let value: String
 
     var id: String { label }
+}
+
+struct EarthComparisonCandidate: Codable, Identifiable, Hashable {
+    let city: String
+    let country: String
+    let temperature: Double
+    let uvIndex: Double?
+    let temperatureDeltaFromReference: Double
+    let isSelectedMatch: Bool
+
+    var id: String {
+        "\(city), \(country)"
+    }
 }
 
 struct DashboardSnapshot {
@@ -139,6 +162,7 @@ struct EarthCityTemperature {
     let latitude: Double
     let longitude: Double
     let sourceNote: String
+    let comparisonCandidates: [EarthComparisonCandidate]
 }
 
 struct LocalConditions {

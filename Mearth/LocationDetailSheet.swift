@@ -21,6 +21,7 @@ struct LocationDetailSheet: View {
 
                     metricsSection
                     coordinatesSection
+                    comparisonSection
                     contextSection
                     sourcesSection
 
@@ -116,11 +117,63 @@ struct LocationDetailSheet: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
 
+            if let sourceNote = card.sourceNote, !sourceNote.isEmpty {
+                Text(sourceNote)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             ForEach(contextLines, id: \.self) { line in
                 Text(line)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var comparisonSection: some View {
+        if card.kind == .earth, !card.earthComparisonCandidates.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Sampled Earth Cities")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text("This is the full Open-Meteo city sample used for the Earth match, sorted by temperature difference from Mars.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(card.earthComparisonCandidates) { candidate in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(candidate.city), \(candidate.country)")
+                                .font(.subheadline.weight(candidate.isSelectedMatch ? .semibold : .regular))
+                                .foregroundStyle(.primary)
+
+                            Text("\(Self.temperatureString(candidate.temperature)) · \(Self.temperatureDeltaString(candidate.temperatureDeltaFromReference)) from Mars")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 12)
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(Self.temperatureString(candidate.temperature))
+                                .font(.system(.body, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(.primary)
+
+                            Text("UV \(Self.uvIndexString(candidate.uvIndex))")
+                                .font(.footnote)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
             }
         }
     }
@@ -228,7 +281,7 @@ struct LocationDetailSheet: View {
                 SourceLink(
                     title: "Open-Meteo Forecast API",
                     url: URL(string: "https://open-meteo.com/en/docs")!,
-                    note: "Source of the current temperature and UV Index used for the Earth comparison city."
+                    note: "Source of the current temperature and UV Index used for the sampled Earth city comparison set."
                 ),
                 SourceLink(
                     title: "US EPA Radiation Sources and Doses",
@@ -238,6 +291,11 @@ struct LocationDetailSheet: View {
             ]
         case .local:
             return [
+                SourceLink(
+                    title: "Apple WeatherKit",
+                    url: URL(string: "https://developer.apple.com/weatherkit/")!,
+                    note: "Primary source for the local card's current weather and UV Index when Apple Weather is available."
+                ),
                 SourceLink(
                     title: "Open-Meteo Forecast API",
                     url: URL(string: "https://open-meteo.com/en/docs")!,
@@ -250,6 +308,21 @@ struct LocationDetailSheet: View {
                 )
             ]
         }
+    }
+
+    private static func temperatureString(_ value: Double) -> String {
+        String(format: "%.1f°C", value)
+    }
+
+    private static func temperatureDeltaString(_ value: Double) -> String {
+        String(format: "%.1f°C", value)
+    }
+
+    private static func uvIndexString(_ value: Double?) -> String {
+        guard let value else {
+            return "--"
+        }
+        return String(format: "%.1f", value)
     }
 }
 

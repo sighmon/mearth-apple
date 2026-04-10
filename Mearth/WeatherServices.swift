@@ -27,20 +27,21 @@ struct DashboardComposer {
         case .success(let mars):
             weatherLogger.info("Mars refresh succeeded for sol \(mars.sol)")
             cards.append(
-                TemperatureCard(
-                    kind: .mars,
-                    title: "Mars",
-                    subtitle: "Curiosity at Gale Crater",
-                    value: Self.temperatureString(mars.estimatedCurrentTemperature),
-                    supportingMetrics: [
-                        Self.uvMetric(Self.marsUVIndexEquivalent(mars)),
-                        Self.radiationMetric(Self.marsRadiationDoseRate),
-                    ],
-                    detail: "LMST \(Self.hourMinuteString(mars.localMeanSolarTime)) · latest REMS sol \(mars.sol)",
-                    footnote: "REMS weather, modeled UV, RAD baseline.",
-                    lastUpdated: now,
-                    isAvailable: true,
-                    isCached: false,
+                    TemperatureCard(
+                        kind: .mars,
+                        title: "Mars",
+                        subtitle: "Curiosity at Gale Crater",
+                        value: Self.temperatureString(mars.estimatedCurrentTemperature),
+                        supportingMetrics: [
+                            Self.uvMetric(Self.marsUVIndexEquivalent(mars)),
+                            Self.radiationMetric(Self.marsRadiationDoseRate),
+                        ],
+                        sourceNote: "Official CAB Curiosity REMS weather feed, with modeled UV-equivalent and NASA/JPL RAD baseline context.",
+                        detail: "LMST \(Self.hourMinuteString(mars.localMeanSolarTime)) · latest REMS sol \(mars.sol)",
+                        footnote: "REMS weather, modeled UV, RAD baseline.",
+                        lastUpdated: now,
+                        isAvailable: true,
+                        isCached: false,
                     location: CardLocation(
                         title: "Curiosity Rover",
                         subtitle: "Gale Crater, Mars",
@@ -66,6 +67,8 @@ struct DashboardComposer {
                             Self.uvMetric(earthMatch.uvIndex),
                             Self.radiationMetric(Self.earthRadiationDoseRate),
                         ],
+                        sourceNote: earthMatch.sourceNote,
+                        earthComparisonCandidates: earthMatch.comparisonCandidates,
                         detail: "\(Self.temperatureDeltaString(delta)) from Mars right now",
                         footnote: "Live weather and UV, Earth background radiation.",
                         lastUpdated: now,
@@ -91,6 +94,7 @@ struct DashboardComposer {
                         subtitle: "Global city sample unavailable",
                         value: "--",
                         supportingMetrics: [],
+                        sourceNote: "Open-Meteo did not return the sampled comparison set.",
                         detail: "Open-Meteo did not return a usable comparison set.",
                         footnote: "Mars is still shown from Curiosity's official feed.",
                         lastUpdated: now,
@@ -110,6 +114,7 @@ struct DashboardComposer {
                     subtitle: "Curiosity feed unavailable",
                     value: "--",
                     supportingMetrics: [],
+                    sourceNote: "CAB's Curiosity weather widget feed is unavailable right now.",
                     detail: "The official REMS endpoint did not return a usable payload.",
                     footnote: "This card uses CAB's Curiosity weather widget feed when it is reachable.",
                     lastUpdated: now,
@@ -125,6 +130,7 @@ struct DashboardComposer {
                     subtitle: "Waiting on the Mars reference temperature",
                     value: "--",
                     supportingMetrics: [],
+                    sourceNote: "The Earth comparison needs a current Mars reference temperature first.",
                     detail: "A comparison city needs the Curiosity reading first.",
                     footnote: "Refresh again when the Mars feed is back.",
                     lastUpdated: now,
@@ -146,6 +152,7 @@ struct DashboardComposer {
                     Self.uvMetric(Self.moonUVIndexEquivalent(moonEstimate)),
                     Self.radiationMetric(Self.moonRadiationDoseRate),
                 ],
+                sourceNote: "Modeled lunar surface conditions at Tranquility Base using local solar angle, UV-equivalent scaling, and Apollo-era radiation context.",
                 detail: "Lunar local time \(Self.hourMinuteString(moonEstimate.localHour))",
                 footnote: "Modeled temperature and UV, Apollo-era radiation baseline.",
                 lastUpdated: now,
@@ -186,6 +193,7 @@ struct DashboardComposer {
                         Self.uvMetric(local.uvIndex),
                         Self.radiationMetric(Self.earthRadiationDoseRate),
                     ],
+                    sourceNote: local.sourceNote,
                     detail: "Current temperature near you",
                     footnote: "Live local weather and UV, Earth background radiation.",
                     lastUpdated: now,
@@ -212,6 +220,7 @@ struct DashboardComposer {
                     subtitle: "Current location unavailable",
                     value: "--",
                     supportingMetrics: [],
+                    sourceNote: "Apple location services and network fallback both failed to resolve a current local weather reading.",
                     detail: "IP geolocation or local forecast lookup failed.",
                     footnote: "This card falls back to network location so it also works on Apple TV.",
                     lastUpdated: now,
@@ -460,15 +469,54 @@ private struct OpenMeteoEarthTemperatureService {
                 uvIndex: response.current.uvIndex,
                 latitude: city.latitude,
                 longitude: city.longitude,
-                sourceNote: "Closest current city match from a global sample via Open-Meteo."
+                sourceNote: "Closest current city match from the app's sampled global city set via Open-Meteo.",
+                comparisonCandidates: []
             )
         }
 
-        guard let closest = paired.min(by: {
-            abs($0.temperature - referenceTemperature) < abs($1.temperature - referenceTemperature)
-        }) else {
+        let sorted = paired
+            .map { candidate in
+                EarthComparisonCandidate(
+                    city: candidate.city,
+                    country: candidate.country,
+                    temperature: candidate.temperature,
+                    uvIndex: candidate.uvIndex,
+                    temperatureDeltaFromReference: abs(candidate.temperature - referenceTemperature),
+                    isSelectedMatch: false
+                )
+            }
+            .sorted {
+                if $0.temperatureDeltaFromReference == $1.temperatureDeltaFromReference {
+                    return $0.temperature < $1.temperature
+                }
+                return $0.temperatureDeltaFromReference < $1.temperatureDeltaFromReference
+            }
+
+        guard let selected = sorted.first else {
             throw WeatherServiceError.invalidPayload
         }
+
+        let comparisonCandidates = sorted.map { candidate in
+            EarthComparisonCandidate(
+                city: candidate.city,
+                country: candidate.country,
+                temperature: candidate.temperature,
+                uvIndex: candidate.uvIndex,
+                temperatureDeltaFromReference: candidate.temperatureDeltaFromReference,
+                isSelectedMatch: candidate.city == selected.city && candidate.country == selected.country
+            )
+        }
+
+        let closest = EarthCityTemperature(
+            city: selected.city,
+            country: selected.country,
+            temperature: selected.temperature,
+            uvIndex: selected.uvIndex,
+            latitude: paired.first(where: { $0.city == selected.city && $0.country == selected.country })?.latitude ?? 0,
+            longitude: paired.first(where: { $0.city == selected.city && $0.country == selected.country })?.longitude ?? 0,
+            sourceNote: "Closest current city match from the app's sampled global city set via Open-Meteo. The modal shows the full sampled comparison list.",
+            comparisonCandidates: comparisonCandidates
+        )
 
         weatherLogger.info("Open-Meteo Earth match selected \(closest.city), \(closest.country)")
         return closest
@@ -732,8 +780,8 @@ private struct DeviceLocationLocalWeatherService {
             return LocalConditions(
                 label: label,
                 temperature: current.temperature.converted(to: .celsius).value,
-                uvIndex: nil,
-                sourceNote: "Current device location via Apple Location Services, weather via WeatherKit.",
+                uvIndex: Double(current.uvIndex.value),
+                sourceNote: "Current device location via Apple Location Services, with current weather and UV from Apple Weather.",
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude
             )
