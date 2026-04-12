@@ -27,12 +27,13 @@ struct DashboardComposer {
         case .success(let mars):
             weatherLogger.info("Mars refresh succeeded for sol \(mars.sol)")
             cards.append(
-                    TemperatureCard(
-                        kind: .mars,
-                        title: "Mars",
-                        subtitle: "Curiosity at Gale Crater",
-                        value: Self.temperatureString(mars.estimatedCurrentTemperature),
-                        supportingMetrics: [
+	                    TemperatureCard(
+	                        kind: .mars,
+	                        title: "Mars",
+	                        subtitle: "Curiosity at Gale Crater",
+	                        value: Self.temperatureString(mars.estimatedCurrentTemperature),
+	                        temperatureCelsius: mars.estimatedCurrentTemperature,
+	                        supportingMetrics: [
                             Self.uvMetric(Self.marsUVIndexEquivalent(mars)),
                             Self.radiationMetric(Self.marsRadiationDoseRate),
                         ],
@@ -58,12 +59,14 @@ struct DashboardComposer {
                 let delta = abs(earthMatch.temperature - mars.estimatedCurrentTemperature)
                 weatherLogger.info("Earth match succeeded: \(earthMatch.city), \(earthMatch.country) at \(earthMatch.temperature, format: .fixed(precision: 1))C")
                 cards.append(
-                    TemperatureCard(
-                        kind: .earth,
-                        title: "Earth Match",
-                        subtitle: "\(earthMatch.city), \(earthMatch.country)",
-                        value: Self.temperatureString(earthMatch.temperature),
-                        supportingMetrics: [
+	                    TemperatureCard(
+	                        kind: .earth,
+	                        title: "Earth Match",
+	                        subtitle: "\(earthMatch.city), \(earthMatch.country)",
+	                        value: Self.temperatureString(earthMatch.temperature),
+	                        temperatureCelsius: earthMatch.temperature,
+	                        temperatureDeltaCelsius: delta,
+	                        supportingMetrics: [
                             Self.uvMetric(earthMatch.uvIndex),
                             Self.radiationMetric(Self.earthRadiationDoseRate),
                         ],
@@ -143,12 +146,13 @@ struct DashboardComposer {
         }
 
         cards.append(
-            TemperatureCard(
-                kind: .moon,
-                title: "Moon Estimate",
-                subtitle: "Apollo 11 · Tranquility Base",
-                value: Self.temperatureString(moonEstimate.temperature),
-                supportingMetrics: [
+	            TemperatureCard(
+	                kind: .moon,
+	                title: "Moon Estimate",
+	                subtitle: "Apollo 11 · Tranquility Base",
+	                value: Self.temperatureString(moonEstimate.temperature),
+	                temperatureCelsius: moonEstimate.temperature,
+	                supportingMetrics: [
                     Self.uvMetric(Self.moonUVIndexEquivalent(moonEstimate)),
                     Self.radiationMetric(Self.moonRadiationDoseRate),
                 ],
@@ -184,12 +188,14 @@ struct DashboardComposer {
             weatherLogger.info("Local weather succeeded for \(local.label) at \(local.temperature, format: .fixed(precision: 1))C")
             return DashboardCardSnapshot(
                 generatedAt: now,
-                card: TemperatureCard(
-                    kind: .local,
-                    title: "Local",
-                    subtitle: local.label,
-                    value: Self.temperatureString(local.temperature),
-                    supportingMetrics: [
+	                card: TemperatureCard(
+	                    kind: .local,
+	                    title: "Local",
+	                    subtitle: local.label,
+	                    value: Self.temperatureString(local.temperature),
+	                    temperatureCelsius: local.temperature,
+	                    temperatureRegionCode: local.countryCode,
+	                    supportingMetrics: [
                         Self.uvMetric(local.uvIndex),
                         Self.radiationMetric(Self.earthRadiationDoseRate),
                     ],
@@ -657,12 +663,18 @@ private struct NetworkFallbackLocalWeatherService {
                 latitude: preferredLocation.coordinate.latitude,
                 longitude: preferredLocation.coordinate.longitude
             )
-            let label = await resolveLabel(for: preferredLocation)
+            let placemarkDetails = await resolvePlacemarkDetails(for: preferredLocation)
+            let label = placemarkDetails.label ?? String(
+                format: "Lat %.2f, Lon %.2f",
+                preferredLocation.coordinate.latitude,
+                preferredLocation.coordinate.longitude
+            )
             return LocalConditions(
                 label: label,
                 temperature: forecast.current.temperature2M,
                 uvIndex: forecast.current.uvIndex,
                 sourceNote: "Current device location via Apple Location Services, temperature via Open-Meteo fallback.",
+                countryCode: placemarkDetails.countryCode,
                 latitude: preferredLocation.coordinate.latitude,
                 longitude: preferredLocation.coordinate.longitude
             )
@@ -676,6 +688,7 @@ private struct NetworkFallbackLocalWeatherService {
             temperature: forecast.current.temperature2M,
             uvIndex: forecast.current.uvIndex,
             sourceNote: sourceNote(reason: reason),
+            countryCode: resolved.countryCode,
             latitude: resolved.latitude,
             longitude: resolved.longitude
         )
@@ -690,7 +703,8 @@ private struct NetworkFallbackLocalWeatherService {
                 label: locationLabel(city: ipapi.city, region: ipapi.region, country: ipapi.countryName),
                 latitude: latitude,
                 longitude: longitude,
-                sourceNote: "Approximate network location."
+                sourceNote: "Approximate network location.",
+                countryCode: ipapi.countryCode
             )
         }
 
@@ -704,7 +718,8 @@ private struct NetworkFallbackLocalWeatherService {
             label: locationLabel(city: ipwho.city, region: ipwho.region, country: ipwho.country),
             latitude: latitude,
             longitude: longitude,
-            sourceNote: "Approximate network location."
+            sourceNote: "Approximate network location.",
+            countryCode: ipwho.countryCode
         )
     }
 
@@ -735,29 +750,6 @@ private struct NetworkFallbackLocalWeatherService {
             }
 
         return parts.isEmpty ? "Current network location" : parts.joined(separator: ", ")
-    }
-
-    private func resolveLabel(for location: CLLocation) async -> String {
-        let geocoder = CLGeocoder()
-        if let placemark = try? await geocoder.reverseGeocodeLocation(location).first {
-            let parts = [placemark.locality, placemark.administrativeArea, placemark.country]
-                .compactMap { value -> String? in
-                    guard let value, !value.isEmpty else {
-                        return nil
-                    }
-                    return value
-                }
-
-            if !parts.isEmpty {
-                return parts.joined(separator: ", ")
-            }
-        }
-
-        return String(
-            format: "Lat %.2f, Lon %.2f",
-            location.coordinate.latitude,
-            location.coordinate.longitude
-        )
     }
 
     private func sourceNote(reason: Error?) -> String {
@@ -791,7 +783,12 @@ private struct DeviceLocationLocalWeatherService {
             let current = try await withTimeout(seconds: 4) {
                 try await weatherService.weather(for: location, including: .current)
             }
-            let label = await resolveLabel(for: location)
+            let placemarkDetails = await resolvePlacemarkDetails(for: location)
+            let label = placemarkDetails.label ?? String(
+                format: "Lat %.2f, Lon %.2f",
+                location.coordinate.latitude,
+                location.coordinate.longitude
+            )
             weatherLogger.info("WeatherKit local weather succeeded for \(label)")
 
             return LocalConditions(
@@ -799,6 +796,7 @@ private struct DeviceLocationLocalWeatherService {
                 temperature: current.temperature.converted(to: .celsius).value,
                 uvIndex: Double(current.uvIndex.value),
                 sourceNote: "Current device location via Apple Location Services, with current weather and UV from Apple Weather.",
+                countryCode: placemarkDetails.countryCode,
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude
             )
@@ -809,29 +807,6 @@ private struct DeviceLocationLocalWeatherService {
         #else
         return try await fallbackService.fetchCurrentConditions(preferredLocation: location, reason: nil)
         #endif
-    }
-
-    private func resolveLabel(for location: CLLocation) async -> String {
-        let geocoder = CLGeocoder()
-        if let placemark = try? await geocoder.reverseGeocodeLocation(location).first {
-            let parts = [placemark.locality, placemark.administrativeArea, placemark.country]
-                .compactMap { value -> String? in
-                    guard let value, !value.isEmpty else {
-                        return nil
-                    }
-                    return value
-                }
-
-            if !parts.isEmpty {
-                return parts.joined(separator: ", ")
-            }
-        }
-
-        return String(
-            format: "Lat %.2f, Lon %.2f",
-            location.coordinate.latitude,
-            location.coordinate.longitude
-        )
     }
 }
 
@@ -1101,6 +1076,7 @@ private struct IPAPILocationResponse: Decodable {
     let city: String?
     let region: String?
     let countryName: String?
+    let countryCode: String?
     let latitude: Double?
     let longitude: Double?
 
@@ -1108,6 +1084,7 @@ private struct IPAPILocationResponse: Decodable {
         case city
         case region
         case countryName = "country_name"
+        case countryCode = "country_code"
         case latitude
         case longitude
     }
@@ -1118,8 +1095,19 @@ private struct IPWhoLocationResponse: Decodable {
     let city: String?
     let region: String?
     let country: String?
+    let countryCode: String?
     let latitude: Double?
     let longitude: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case city
+        case region
+        case country
+        case countryCode = "country_code"
+        case latitude
+        case longitude
+    }
 }
 
 private struct EarthCity {
@@ -1134,6 +1122,7 @@ private struct ResolvedLocation {
     let latitude: Double
     let longitude: Double
     let sourceNote: String
+    let countryCode: String?
 }
 
 private struct ApolloSite {
@@ -1141,6 +1130,33 @@ private struct ApolloSite {
     let latitude: Double
     let longitude: Double
 }
+
+#if canImport(CoreLocation)
+private struct ResolvedPlacemarkDetails {
+    let label: String?
+    let countryCode: String?
+}
+
+private func resolvePlacemarkDetails(for location: CLLocation) async -> ResolvedPlacemarkDetails {
+    let geocoder = CLGeocoder()
+    if let placemark = try? await geocoder.reverseGeocodeLocation(location).first {
+        let parts = [placemark.locality, placemark.administrativeArea, placemark.country]
+            .compactMap { value -> String? in
+                guard let value, !value.isEmpty else {
+                    return nil
+                }
+                return value
+            }
+
+        return ResolvedPlacemarkDetails(
+            label: parts.isEmpty ? nil : parts.joined(separator: ", "),
+            countryCode: placemark.isoCountryCode
+        )
+    }
+
+    return ResolvedPlacemarkDetails(label: nil, countryCode: nil)
+}
+#endif
 
 private func positiveModulo(_ value: Double, _ modulus: Double) -> Double {
     let remainder = value.truncatingRemainder(dividingBy: modulus)

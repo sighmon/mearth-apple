@@ -10,6 +10,7 @@ import UIKit
 struct DashboardView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = DashboardStore()
+    @StateObject private var temperatureUnitStore = TemperatureUnitStore()
     @State private var selectedCard: TemperatureCard?
     private let refreshTimer = Timer.publish(every: 900, on: .main, in: .common).autoconnect()
 
@@ -44,7 +45,9 @@ struct DashboardView: View {
             }
         }
         .task {
+            temperatureUnitStore.applyDetectedCountryCode(localTemperatureRegionCode)
             await store.refreshIfNeeded()
+            temperatureUnitStore.applyDetectedCountryCode(localTemperatureRegionCode)
         }
         .onReceive(refreshTimer) { _ in
             Task {
@@ -57,9 +60,14 @@ struct DashboardView: View {
                 await store.refreshLocalCardIfNeeded()
             }
         }
+        .onReceive(store.$cards) { _ in
+            temperatureUnitStore.applyDetectedCountryCode(localTemperatureRegionCode)
+        }
         .sheet(item: $selectedCard) { card in
             LocationDetailSheet(card: card)
+                .environmentObject(temperatureUnitStore)
         }
+        .environmentObject(temperatureUnitStore)
     }
 
     private var header: some View {
@@ -308,9 +316,14 @@ struct DashboardView: View {
     private var refreshButtonSize: CGFloat {
         refreshIconSize + (refreshButtonPadding * 2)
     }
+
+    private var localTemperatureRegionCode: String? {
+        store.cards.first(where: { $0.kind == .local })?.temperatureRegionCode
+    }
 }
 
 private struct TemperatureCardView: View {
+    @EnvironmentObject private var temperatureUnitStore: TemperatureUnitStore
     let card: TemperatureCard
 
     var body: some View {
@@ -335,7 +348,7 @@ private struct TemperatureCardView: View {
                     .foregroundStyle(.white.opacity(0.85))
             }
 
-            Text(card.value)
+            Text(displayValue)
                 .font(.system(size: 48, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(.white)
@@ -359,7 +372,7 @@ private struct TemperatureCardView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(card.detail)
+                Text(displayDetail)
                     .font(.system(.headline, weight: .medium))
                     .foregroundStyle(.white.opacity(0.84))
 
@@ -409,6 +422,20 @@ private struct TemperatureCardView: View {
         #else
         22
         #endif
+    }
+
+    private var displayValue: String {
+        if let temperatureCelsius = card.temperatureCelsius {
+            return temperatureUnitStore.formattedTemperature(celsius: temperatureCelsius)
+        }
+        return card.value
+    }
+
+    private var displayDetail: String {
+        if let delta = card.temperatureDeltaCelsius, card.kind == .earth {
+            return "\(temperatureUnitStore.formattedTemperatureDelta(celsius: delta)) difference from Mars right now"
+        }
+        return card.detail
     }
 
 }

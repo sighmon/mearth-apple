@@ -33,6 +33,9 @@ struct TemperatureCard: Codable, Identifiable {
     let title: String
     let subtitle: String
     let value: String
+    let temperatureCelsius: Double?
+    let temperatureDeltaCelsius: Double?
+    let temperatureRegionCode: String?
     let supportingMetrics: [CardSupportingMetric]
     let sourceNote: String?
     let earthComparisonCandidates: [EarthComparisonCandidate]
@@ -50,6 +53,9 @@ struct TemperatureCard: Codable, Identifiable {
         case title
         case subtitle
         case value
+        case temperatureCelsius
+        case temperatureDeltaCelsius
+        case temperatureRegionCode
         case supportingMetrics
         case sourceNote
         case earthComparisonCandidates
@@ -66,6 +72,9 @@ struct TemperatureCard: Codable, Identifiable {
         title: String,
         subtitle: String,
         value: String,
+        temperatureCelsius: Double? = nil,
+        temperatureDeltaCelsius: Double? = nil,
+        temperatureRegionCode: String? = nil,
         supportingMetrics: [CardSupportingMetric] = [],
         sourceNote: String? = nil,
         earthComparisonCandidates: [EarthComparisonCandidate] = [],
@@ -80,6 +89,9 @@ struct TemperatureCard: Codable, Identifiable {
         self.title = title
         self.subtitle = subtitle
         self.value = value
+        self.temperatureCelsius = temperatureCelsius
+        self.temperatureDeltaCelsius = temperatureDeltaCelsius
+        self.temperatureRegionCode = temperatureRegionCode
         self.supportingMetrics = supportingMetrics
         self.sourceNote = sourceNote
         self.earthComparisonCandidates = earthComparisonCandidates
@@ -97,6 +109,9 @@ struct TemperatureCard: Codable, Identifiable {
         title = try container.decode(String.self, forKey: .title)
         subtitle = try container.decode(String.self, forKey: .subtitle)
         value = try container.decode(String.self, forKey: .value)
+        temperatureCelsius = try container.decodeIfPresent(Double.self, forKey: .temperatureCelsius)
+        temperatureDeltaCelsius = try container.decodeIfPresent(Double.self, forKey: .temperatureDeltaCelsius)
+        temperatureRegionCode = try container.decodeIfPresent(String.self, forKey: .temperatureRegionCode)
         supportingMetrics = try container.decodeIfPresent([CardSupportingMetric].self, forKey: .supportingMetrics) ?? []
         sourceNote = try container.decodeIfPresent(String.self, forKey: .sourceNote)
         earthComparisonCandidates = try container.decodeIfPresent([EarthComparisonCandidate].self, forKey: .earthComparisonCandidates) ?? []
@@ -170,6 +185,7 @@ struct LocalConditions {
     let temperature: Double
     let uvIndex: Double?
     let sourceNote: String
+    let countryCode: String?
     let latitude: Double
     let longitude: Double
 }

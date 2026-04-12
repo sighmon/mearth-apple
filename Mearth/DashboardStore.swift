@@ -47,6 +47,9 @@ final class DashboardStore: ObservableObject {
                     title: card.title,
                     subtitle: card.subtitle,
                     value: card.value,
+                    temperatureCelsius: card.temperatureCelsius,
+                    temperatureDeltaCelsius: card.temperatureDeltaCelsius,
+                    temperatureRegionCode: card.temperatureRegionCode,
                     supportingMetrics: card.supportingMetrics,
                     sourceNote: card.sourceNote,
                     earthComparisonCandidates: card.earthComparisonCandidates,
@@ -218,6 +221,9 @@ final class DashboardStore: ObservableObject {
             title: card.title,
             subtitle: card.subtitle,
             value: card.value,
+            temperatureCelsius: card.temperatureCelsius,
+            temperatureDeltaCelsius: card.temperatureDeltaCelsius,
+            temperatureRegionCode: card.temperatureRegionCode,
             supportingMetrics: card.supportingMetrics,
             sourceNote: card.sourceNote,
             earthComparisonCandidates: card.earthComparisonCandidates,
@@ -312,6 +318,7 @@ extension DashboardStore {
                 title: "Mars",
                 subtitle: "Curiosity at Gale Crater",
                 value: "-18°C",
+                temperatureCelsius: -18,
                 supportingMetrics: [
                     CardSupportingMetric(label: "UV INDEX", value: "4.0"),
                     CardSupportingMetric(label: "RADIATION", value: "27.8 µSv/h"),
@@ -336,6 +343,8 @@ extension DashboardStore {
                 title: "Earth Match",
                 subtitle: "Reykjavik, Iceland",
                 value: "-16°C",
+                temperatureCelsius: -16,
+                temperatureDeltaCelsius: 2,
                 supportingMetrics: [
                     CardSupportingMetric(label: "UV INDEX", value: "0.3"),
                     CardSupportingMetric(label: "RADIATION", value: "0.06 µSv/h"),
@@ -365,6 +374,7 @@ extension DashboardStore {
                 title: "Moon Estimate",
                 subtitle: "Apollo 11 · Tranquility Base",
                 value: "96°C",
+                temperatureCelsius: 96,
                 supportingMetrics: [
                     CardSupportingMetric(label: "UV INDEX", value: "11.2"),
                     CardSupportingMetric(label: "RADIATION", value: "32.0 µSv/h"),
@@ -389,6 +399,8 @@ extension DashboardStore {
                 title: "Local",
                 subtitle: "Adelaide, South Australia, Australia",
                 value: "22°C",
+                temperatureCelsius: 22,
+                temperatureRegionCode: "AU",
                 supportingMetrics: [
                     CardSupportingMetric(label: "UV INDEX", value: "5.1"),
                     CardSupportingMetric(label: "RADIATION", value: "0.06 µSv/h"),

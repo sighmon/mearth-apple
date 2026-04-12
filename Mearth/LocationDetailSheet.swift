@@ -5,6 +5,7 @@ struct LocationDetailSheet: View {
     let card: TemperatureCard
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var temperatureUnitStore: TemperatureUnitStore
 
     var body: some View {
         NavigationStack {
@@ -20,6 +21,7 @@ struct LocationDetailSheet: View {
                     }
 
                     metricsSection
+                    temperaturePreferencesSection
                     coordinatesSection
                     comparisonSection
                     contextSection
@@ -63,7 +65,7 @@ struct LocationDetailSheet: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
 
-            Text(card.value)
+            Text(displayValue)
                 .font(.system(size: 34, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
@@ -111,6 +113,56 @@ struct LocationDetailSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var temperaturePreferencesSection: some View {
+        if card.kind == .local {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Temperature Units")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Text("°C")
+                            .font(.system(.body, weight: manualUnitIsFahrenheit ? .regular : .semibold))
+                            .foregroundStyle(isAutomaticTemperatureUnit ? .secondary : .primary)
+
+                        Toggle("", isOn: manualUnitBinding)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+
+                        Text("°F")
+                            .font(.system(.body, weight: manualUnitIsFahrenheit ? .semibold : .regular))
+                            .foregroundStyle(isAutomaticTemperatureUnit ? .secondary : .primary)
+                    }
+
+                    Spacer(minLength: 16)
+
+                    Button {
+                        if isAutomaticTemperatureUnit {
+                            temperatureUnitStore.setPreference(currentManualPreference)
+                        } else {
+                            temperatureUnitStore.setPreference(.automatic)
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: isAutomaticTemperatureUnit ? "checkmark.square.fill" : "square")
+                                .font(.system(size: 18, weight: .semibold))
+                            Text("Auto")
+                                .font(.system(.body, weight: .semibold))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text("\(autoUnitDescription). Auto uses your detected local region first, then falls back to the device locale.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var contextSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Context")
@@ -153,7 +205,7 @@ struct LocationDetailSheet: View {
                                 .font(.subheadline.weight(candidate.isSelectedMatch ? .semibold : .regular))
                                 .foregroundStyle(.primary)
 
-                            Text("\(Self.temperatureString(candidate.temperature)) · \(Self.temperatureDeltaString(candidate.temperatureDeltaFromReference)) from Mars")
+                            Text("\(formattedTemperature(candidate.temperature, fractionDigits: 1)) · \(formattedTemperatureDelta(candidate.temperatureDeltaFromReference, fractionDigits: 1)) from Mars")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -161,7 +213,7 @@ struct LocationDetailSheet: View {
                         Spacer(minLength: 12)
 
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(Self.temperatureString(candidate.temperature))
+                            Text(formattedTemperature(candidate.temperature, fractionDigits: 1))
                                 .font(.system(.body, weight: .semibold))
                                 .monospacedDigit()
                                 .foregroundStyle(.primary)
@@ -310,12 +362,19 @@ struct LocationDetailSheet: View {
         }
     }
 
-    private static func temperatureString(_ value: Double) -> String {
-        String(format: "%.1f°C", value)
+    private var displayValue: String {
+        if let temperatureCelsius = card.temperatureCelsius {
+            return temperatureUnitStore.formattedTemperature(celsius: temperatureCelsius)
+        }
+        return card.value
     }
 
-    private static func temperatureDeltaString(_ value: Double) -> String {
-        String(format: "%.1f°C", value)
+    private func formattedTemperature(_ value: Double, fractionDigits: Int) -> String {
+        temperatureUnitStore.formattedTemperature(celsius: value, fractionDigits: fractionDigits)
+    }
+
+    private func formattedTemperatureDelta(_ value: Double, fractionDigits: Int) -> String {
+        temperatureUnitStore.formattedTemperatureDelta(celsius: value, fractionDigits: fractionDigits)
     }
 
     private static func uvIndexString(_ value: Double?) -> String {
@@ -323,6 +382,38 @@ struct LocationDetailSheet: View {
             return "--"
         }
         return String(format: "%.1f", value)
+    }
+
+    private var isAutomaticTemperatureUnit: Bool {
+        temperatureUnitStore.preference == .automatic
+    }
+
+    private var manualUnitIsFahrenheit: Bool {
+        switch temperatureUnitStore.preference {
+        case .fahrenheit:
+            return true
+        case .celsius:
+            return false
+        case .automatic:
+            return temperatureUnitStore.resolvedUnit == .fahrenheit
+        }
+    }
+
+    private var currentManualPreference: TemperatureUnitPreference {
+        manualUnitIsFahrenheit ? .fahrenheit : .celsius
+    }
+
+    private var autoUnitDescription: String {
+        "Currently \(temperatureUnitStore.resolvedUnit.symbol)"
+    }
+
+    private var manualUnitBinding: Binding<Bool> {
+        Binding(
+            get: { manualUnitIsFahrenheit },
+            set: { isFahrenheit in
+                temperatureUnitStore.setPreference(isFahrenheit ? .fahrenheit : .celsius)
+            }
+        )
     }
 }
 
