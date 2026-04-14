@@ -5,7 +5,7 @@ private let dashboardLogger = Logger(subsystem: "com.sighmon.mearth", category: 
 
 enum DashboardDevelopmentOptions {
     // Flip this to true during development to bypass all live API calls.
-    static let usePreviewData = false
+    static let usePreviewData = true
 }
 
 @MainActor
@@ -18,13 +18,19 @@ final class DashboardStore: ObservableObject {
 
     private let composer: DashboardComposer
     private let cacheStore: DashboardCacheStore
+    private let sharedSnapshotStore: SharedDashboardSnapshotStore
     private var cachedCardsByKind: [TemperatureCardKind: TemperatureCard]
     private var primaryWarning: String?
     private var localWarning: String?
 
-    init(composer: DashboardComposer = DashboardComposer(), cacheStore: DashboardCacheStore = DashboardCacheStore()) {
+    init(
+        composer: DashboardComposer = DashboardComposer(),
+        cacheStore: DashboardCacheStore = DashboardCacheStore(),
+        sharedSnapshotStore: SharedDashboardSnapshotStore = SharedDashboardSnapshotStore()
+    ) {
         self.composer = composer
         self.cacheStore = cacheStore
+        self.sharedSnapshotStore = sharedSnapshotStore
 
         if DashboardDevelopmentOptions.usePreviewData {
             let previewCards = Self.developmentPreviewCards(referenceDate: .now)
@@ -34,6 +40,7 @@ final class DashboardStore: ObservableObject {
             self.lastSuccessfulRefresh = self.lastUpdated
             self.warning = "Preview data only."
             self.primaryWarning = self.warning
+            publishSharedSnapshot(cards: self.cards, generatedAt: self.lastUpdated ?? .now, warning: self.warning)
             dashboardLogger.info("DashboardStore initialized in preview development mode")
             return
         }
@@ -63,6 +70,7 @@ final class DashboardStore: ObservableObject {
             }
         )
         self.lastSuccessfulRefresh = cachedCards.map(\.lastUpdated).max()
+        publishSharedSnapshot(cards: self.cards, generatedAt: self.lastSuccessfulRefresh ?? .now, warning: self.warning)
         dashboardLogger.info("DashboardStore initialized with \(cachedCards.count) cached cards")
     }
 
@@ -73,10 +81,12 @@ final class DashboardStore: ObservableObject {
         lastSuccessfulRefresh: Date? = nil,
         warning: String? = nil,
         composer: DashboardComposer = DashboardComposer(),
-        cacheStore: DashboardCacheStore = DashboardCacheStore()
+        cacheStore: DashboardCacheStore = DashboardCacheStore(),
+        sharedSnapshotStore: SharedDashboardSnapshotStore = SharedDashboardSnapshotStore()
     ) {
         self.composer = composer
         self.cacheStore = cacheStore
+        self.sharedSnapshotStore = sharedSnapshotStore
         self.cards = Self.cardsForDisplay(previewCards)
         self.isLoading = isLoading
         self.lastUpdated = lastUpdated
@@ -84,6 +94,7 @@ final class DashboardStore: ObservableObject {
         self.warning = warning
         self.primaryWarning = warning
         self.cachedCardsByKind = Dictionary(uniqueKeysWithValues: previewCards.map { ($0.kind, $0) })
+        publishSharedSnapshot(cards: self.cards, generatedAt: lastUpdated ?? .now, warning: warning)
     }
 
     func refreshIfNeeded() async {
@@ -105,6 +116,7 @@ final class DashboardStore: ObservableObject {
             primaryWarning = warning
             localWarning = nil
             cachedCardsByKind = Dictionary(uniqueKeysWithValues: previewCards.map { ($0.kind, $0) })
+            publishSharedSnapshot(cards: cards, generatedAt: lastUpdated ?? .now, warning: warning)
             dashboardLogger.info("Dashboard refresh served preview development data")
             return
         }
@@ -127,6 +139,7 @@ final class DashboardStore: ObservableObject {
         warning = mergedWarning(base: combinedBaseWarning, cards: mergedCards)
         lastUpdated = primarySnapshot.generatedAt
         lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
+        publishSharedSnapshot(cards: mergedCards, generatedAt: primarySnapshot.generatedAt, warning: warning)
         dashboardLogger.info("Dashboard primary refresh published. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
 
         let localCardSnapshot = await localSnapshot
@@ -137,6 +150,7 @@ final class DashboardStore: ObservableObject {
         warning = mergedWarning(base: combinedBaseWarning, cards: mergedCards)
         lastUpdated = localCardSnapshot.generatedAt
         lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
+        publishSharedSnapshot(cards: mergedCards, generatedAt: localCardSnapshot.generatedAt, warning: warning)
         dashboardLogger.info("Dashboard refresh finished. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
     }
 
@@ -158,6 +172,7 @@ final class DashboardStore: ObservableObject {
         warning = mergedWarning(base: combinedBaseWarning, cards: mergedCards)
         lastUpdated = localSnapshot.generatedAt
         lastSuccessfulRefresh = cachedCardsByKind.values.map(\.lastUpdated).max()
+        publishSharedSnapshot(cards: mergedCards, generatedAt: localSnapshot.generatedAt, warning: warning)
         dashboardLogger.info("Local card retry finished. warning=\(self.warning ?? "none"), cachedCards=\(mergedCards.filter { $0.isCached }.count)")
     }
 
@@ -233,6 +248,36 @@ final class DashboardStore: ObservableObject {
             isAvailable: card.isAvailable,
             isCached: isCached,
             location: card.location
+        )
+    }
+
+    private func publishSharedSnapshot(cards: [TemperatureCard], generatedAt: Date, warning: String?) {
+        let snapshot = SharedDashboardSnapshot(
+            generatedAt: generatedAt,
+            cards: cards.map(Self.sharedCard),
+            warning: warning
+        )
+        sharedSnapshotStore.save(snapshot: snapshot)
+        #if canImport(ActivityKit) && os(iOS)
+        if #available(iOS 16.2, *) {
+            Task { @MainActor in
+                await MearthLiveActivityManager.update(snapshot: snapshot)
+            }
+        }
+        #endif
+    }
+
+    private static func sharedCard(_ card: TemperatureCard) -> SharedWeatherCard {
+        SharedWeatherCard(
+            kind: SharedCardKind(rawValue: card.kind.rawValue) ?? .mars,
+            title: card.title,
+            subtitle: card.subtitle,
+            value: card.value,
+            detail: card.detail,
+            footnote: card.footnote,
+            isAvailable: card.isAvailable,
+            isCached: card.isCached,
+            lastUpdated: card.lastUpdated
         )
     }
 

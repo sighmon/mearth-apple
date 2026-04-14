@@ -64,10 +64,34 @@ struct DashboardView: View {
             temperatureUnitStore.applyDetectedCountryCode(localTemperatureRegionCode)
         }
         .sheet(item: $selectedCard) { card in
-            LocationDetailSheet(card: card)
-                .environmentObject(temperatureUnitStore)
+            locationDetailSheet(for: card)
         }
         .environmentObject(temperatureUnitStore)
+    }
+
+    @ViewBuilder
+    private func locationDetailSheet(for card: TemperatureCard) -> some View {
+        let sheet = LocationDetailSheet(card: card)
+            .environmentObject(temperatureUnitStore)
+
+        #if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            if #available(iOS 18.0, *) {
+                sheet
+                    .presentationSizing(.page)
+                    .presentationDetents([.fraction(0.9)])
+                    .presentationDragIndicator(.visible)
+            } else {
+                sheet
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+        } else {
+            sheet
+        }
+        #else
+        sheet
+        #endif
     }
 
     private var header: some View {

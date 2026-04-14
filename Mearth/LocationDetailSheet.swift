@@ -12,29 +12,35 @@ struct LocationDetailSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        header
 
-                    switch detailLocation.body {
-                    case .earth:
-                        EarthLocationMap(location: detailLocation)
-                    case .mars, .moon:
-                        PlanetaryLocationView(location: baseLocation, sites: planetarySites) { siteID in
-                            selectedPlanetarySiteID = siteID
+                        switch detailLocation.body {
+                        case .earth:
+                            EarthLocationMap(location: detailLocation)
+                        case .mars, .moon:
+                            PlanetaryLocationView(
+                                location: baseLocation,
+                                sites: planetarySites,
+                                maxHeight: max(proxy.size.height * 0.5, 320)
+                            ) { siteID in
+                                selectedPlanetarySiteID = siteID
+                            }
                         }
+
+                        metricsSection
+                        temperaturePreferencesSection
+                        coordinatesSection
+                        comparisonSection
+                        contextSection
+                        sourcesSection
+
+                        Spacer(minLength: 0)
                     }
-
-                    metricsSection
-                    temperaturePreferencesSection
-                    coordinatesSection
-                    comparisonSection
-                    contextSection
-                    sourcesSection
-
-                    Spacer(minLength: 0)
+                    .padding(24)
                 }
-                .padding(24)
             }
             .navigationTitle(detailLocation.title)
             #if os(iOS)
@@ -490,6 +496,7 @@ private struct EarthLocationMap: View {
 private struct PlanetaryLocationView: View {
     let location: CardLocation
     let sites: [PlanetarySite]
+    let maxHeight: CGFloat
     let onSiteSelected: (String) -> Void
 
     @State private var selectedSiteID: String?
@@ -530,7 +537,7 @@ private struct PlanetaryLocationView: View {
                 }
             )
             .aspectRatio(1, contentMode: .fit)
-            .frame(minHeight: 320)
+            .frame(minHeight: 320, maxHeight: maxHeight)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
@@ -553,10 +560,6 @@ private struct PlanetaryGlobeView: View {
             onSiteSelected: onSiteSelected
         )
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            }
             .shadow(color: .black.opacity(0.24), radius: 18, x: 0, y: 10)
     }
 }
@@ -840,7 +843,7 @@ private extension PlanetarySceneContainer {
 
         private func loadTexture(for body: CelestialBody) {
             textureTask?.cancel()
-            textureTask = Task {
+            textureTask = Task(priority: .utility) {
                 let texture = await PlanetaryTextureComposer.makeTexture(for: body)
                 guard !Task.isCancelled else {
                     return
@@ -981,7 +984,7 @@ private extension PlanetarySceneContainer {
         private func rotateGlobe(from oldPoint: CGPoint, to newPoint: CGPoint, in view: SCNView) {
             let projectedRadius = projectedGlobeRadius(in: view)
             let deltaX = (newPoint.x - oldPoint.x) / projectedRadius
-            let deltaY = (newPoint.y - oldPoint.y) / projectedRadius
+            let deltaY = platformAdjustedVerticalDelta((newPoint.y - oldPoint.y) / projectedRadius)
             let verticalDirection = verticalRotationDirection(for: currentBody)
             let upAxis = normalizedAxis(cameraAxis(for: SIMD3<Float>(0, 1, 0)))
             let rightAxis = normalizedAxis(cameraAxis(for: SIMD3<Float>(1, 0, 0)))
@@ -1009,7 +1012,7 @@ private extension PlanetarySceneContainer {
             let verticalDirection = verticalRotationDirection(for: currentBody)
             var angularVelocity = CGPoint(
                 x: velocity.x / projectedRadius,
-                y: verticalDirection * (velocity.y / projectedRadius)
+                y: verticalDirection * platformAdjustedVerticalDelta(velocity.y / projectedRadius)
             )
 
             guard max(abs(angularVelocity.x), abs(angularVelocity.y)) > 0.12 else {
@@ -1050,7 +1053,7 @@ private extension PlanetarySceneContainer {
         private func applyZoom(delta: CGFloat) {
             let currentDistance = CGFloat(cameraNode.position.z)
             let nextDistance = min(max(currentDistance - (delta * 1.6), 1.8), 5.6)
-            cameraNode.position.z = nextDistance
+            cameraNode.position.z = SCNFloat(nextDistance)
         }
 
         private func projectedGlobeRadius(in view: SCNView) -> CGFloat {
@@ -1063,6 +1066,14 @@ private extension PlanetarySceneContainer {
                 return radius
             }
             return max(min(view.bounds.width, view.bounds.height) * 0.3, 1)
+        }
+
+        private func platformAdjustedVerticalDelta(_ value: CGFloat) -> CGFloat {
+            #if os(macOS)
+            value
+            #else
+            -value
+            #endif
         }
 
         private func verticalRotationDirection(for body: CelestialBody) -> CGFloat {
@@ -1136,6 +1147,22 @@ private extension PlanetarySceneContainer {
 
 private enum PlanetaryTextureComposer {
     static func makeTexture(for body: CelestialBody) async -> CGImage? {
+        if let cached = await PlanetaryTextureCache.shared.cachedTexture(for: body) {
+            return cached
+        }
+
+        if let inFlight = await PlanetaryTextureCache.shared.inFlightTexture(for: body) {
+            return await inFlight.value
+        }
+
+        let task = Task(priority: .utility) { await renderTexture(for: body) }
+        await PlanetaryTextureCache.shared.storeInFlight(task, for: body)
+        let image = await task.value
+        await PlanetaryTextureCache.shared.finish(texture: image, for: body)
+        return image
+    }
+
+    private static func renderTexture(for body: CelestialBody) async -> CGImage? {
         let urls = textureURLs(for: body)
         guard !urls.isEmpty else {
             return nil
@@ -1213,5 +1240,31 @@ private enum PlanetaryTextureComposer {
         }
 
         return context.makeImage()
+    }
+}
+
+private actor PlanetaryTextureCache {
+    static let shared = PlanetaryTextureCache()
+
+    private var textures: [String: CGImage] = [:]
+    private var inFlightTasks: [String: Task<CGImage?, Never>] = [:]
+
+    func cachedTexture(for body: CelestialBody) -> CGImage? {
+        textures[body.rawValue]
+    }
+
+    func inFlightTexture(for body: CelestialBody) -> Task<CGImage?, Never>? {
+        inFlightTasks[body.rawValue]
+    }
+
+    func storeInFlight(_ task: Task<CGImage?, Never>, for body: CelestialBody) {
+        inFlightTasks[body.rawValue] = task
+    }
+
+    func finish(texture: CGImage?, for body: CelestialBody) {
+        if let texture {
+            textures[body.rawValue] = texture
+        }
+        inFlightTasks[body.rawValue] = nil
     }
 }
