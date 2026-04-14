@@ -5,7 +5,7 @@ private let dashboardLogger = Logger(subsystem: "com.sighmon.mearth", category: 
 
 enum DashboardDevelopmentOptions {
     // Flip this to true during development to bypass all live API calls.
-    static let usePreviewData = true
+    static let usePreviewData = false
 }
 
 @MainActor
