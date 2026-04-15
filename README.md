@@ -2,7 +2,7 @@
 
 Where on Earth is the temperature similar to Mars, the Moon, and home?
 
-<img src="mearth-1.png" width="24%" /><img src="mearth-2.png" width="24%" /><img src="mearth-3.png" width="24%" /><img src="mearth-4.png" width="24%" />
+<img src="mearth-1.png" width="24%" /> <img src="mearth-2.png" width="24%" /> <img src="mearth-3.png" width="24%" /> <img src="mearth-4.png" width="24%" />
 
 Mearth is a SwiftUI app for iPhone, iPad, Mac, Apple TV, widgets, and iOS Live Activities.
 
