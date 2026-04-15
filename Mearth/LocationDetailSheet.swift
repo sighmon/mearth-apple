@@ -789,7 +789,9 @@ private extension PlanetarySceneContainer {
 
             for site in sites {
                 let isSelected = site.id == selectedSiteID
-                let position = pointOnSphere(latitude: site.latitude, longitude: site.longitude, radius: isSelected ? 1.05 : 1.03)
+                let markerRadius = isSelected ? 0.045 : 0.026
+                let markerCenterRadius = 1.0 - (Double(markerRadius) * 0.5)
+                let position = pointOnSphere(latitude: site.latitude, longitude: site.longitude, radius: markerCenterRadius)
 
                 let hitTarget = SCNNode(geometry: SCNSphere(radius: isSelected ? 0.08 : 0.055))
                 let hitMaterial = SCNMaterial()
@@ -804,7 +806,7 @@ private extension PlanetarySceneContainer {
                 hitTarget.name = site.id
                 siteNodes.addChildNode(hitTarget)
 
-                let marker = SCNNode(geometry: SCNSphere(radius: isSelected ? 0.045 : 0.026))
+                let marker = SCNNode(geometry: SCNSphere(radius: markerRadius))
                 let markerMaterial = SCNMaterial()
                 markerMaterial.lightingModel = .constant
                 markerMaterial.diffuse.contents = markerColor(for: site.celestialBody, isSelected: isSelected)
