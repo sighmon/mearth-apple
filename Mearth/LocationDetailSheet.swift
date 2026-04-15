@@ -54,6 +54,9 @@ struct LocationDetailSheet: View {
                 }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 680, idealWidth: 760, minHeight: 720, idealHeight: 820)
+        #endif
     }
 
     private var baseLocation: CardLocation {

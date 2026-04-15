@@ -23,7 +23,14 @@ struct DashboardView: View {
         GeometryReader { proxy in
             ZStack {
                 background
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .frame(
+                        width: proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing,
+                        height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
+                    )
+                    .offset(
+                        x: (proxy.safeAreaInsets.leading - proxy.safeAreaInsets.trailing) * 0.5,
+                        y: (proxy.safeAreaInsets.top - proxy.safeAreaInsets.bottom) * 0.5
+                    )
 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -43,6 +50,7 @@ struct DashboardView: View {
                     .frame(minHeight: proxy.size.height)
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .task {
             temperatureUnitStore.applyDetectedCountryCode(localTemperatureRegionCode)
