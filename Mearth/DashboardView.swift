@@ -189,7 +189,10 @@ struct DashboardView: View {
                     Button {
                         selectedCard = card
                     } label: {
-                        TemperatureCardView(card: card)
+                        TemperatureCardView(
+                            card: card,
+                            showsLoadingPulse: store.isLoading
+                        )
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -356,9 +359,27 @@ struct DashboardView: View {
 
 private struct TemperatureCardView: View {
     @EnvironmentObject private var temperatureUnitStore: TemperatureUnitStore
+    @State private var isPulsing = false
     let card: TemperatureCard
+    let showsLoadingPulse: Bool
 
     var body: some View {
+        cardContent
+            .opacity(showsLoadingPulse ? (isPulsing ? 0.7 : 1.0) : 1.0)
+            .task(id: showsLoadingPulse) {
+                guard showsLoadingPulse else {
+                    isPulsing = false
+                    return
+                }
+
+                isPulsing = false
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    isPulsing = true
+                }
+            }
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {

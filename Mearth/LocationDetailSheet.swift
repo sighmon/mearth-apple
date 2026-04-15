@@ -89,6 +89,9 @@ struct LocationDetailSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(headerSubtitle)
                 .font(.title3.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.78)
 
             Text(detailLocation.body.rawValue.capitalized)
                 .font(.subheadline.weight(.medium))
@@ -539,11 +542,10 @@ private struct PlanetaryLocationView: View {
                     onSiteSelected(siteID)
                 }
             )
-            .aspectRatio(1, contentMode: .fit)
-            .frame(minHeight: 320, maxHeight: maxHeight)
+            .frame(maxWidth: .infinity)
+            .frame(height: maxHeight)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
     }
 }
 
@@ -812,17 +814,59 @@ private extension PlanetarySceneContainer {
                 siteNodes.addChildNode(marker)
 
                 if isSelected {
-                    let halo = SCNNode(geometry: SCNSphere(radius: 0.065))
-                    let haloMaterial = SCNMaterial()
-                    haloMaterial.lightingModel = .constant
-                    haloMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.18)
-                    haloMaterial.transparency = 0.25
-                    halo.geometry?.firstMaterial = haloMaterial
-                    halo.position = position
-                    halo.name = site.id
-                    siteNodes.addChildNode(halo)
+                    siteNodes.addChildNode(selectionHaloNode(position: position))
+                    siteNodes.addChildNode(selectionPingNode(position: position, delay: 0.0))
+                    siteNodes.addChildNode(selectionPingNode(position: position, delay: 0.95))
                 }
             }
+        }
+
+        private func selectionHaloNode(position: SCNVector3) -> SCNNode {
+            let halo = SCNNode(geometry: SCNSphere(radius: 0.065))
+            let haloMaterial = SCNMaterial()
+            haloMaterial.lightingModel = .constant
+            haloMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.18)
+            haloMaterial.transparency = 0.24
+            haloMaterial.readsFromDepthBuffer = false
+            haloMaterial.writesToDepthBuffer = false
+            halo.geometry?.firstMaterial = haloMaterial
+            halo.position = position
+            return halo
+        }
+
+        private func selectionPingNode(position: SCNVector3, delay: TimeInterval) -> SCNNode {
+            let ping = SCNNode(geometry: SCNSphere(radius: 0.055))
+            let pingMaterial = SCNMaterial()
+            pingMaterial.lightingModel = .constant
+            pingMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.42)
+            pingMaterial.emission.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.3)
+            pingMaterial.transparency = 0.42
+            pingMaterial.readsFromDepthBuffer = false
+            pingMaterial.writesToDepthBuffer = false
+            ping.geometry?.firstMaterial = pingMaterial
+            ping.position = position
+            ping.opacity = 0.0
+            ping.scale = SCNVector3(0.72, 0.72, 0.72)
+
+            let reset = SCNAction.run { node in
+                node.opacity = 0.68
+                node.scale = SCNVector3(0.72, 0.72, 0.72)
+            }
+            let expand = SCNAction.scale(to: 2.45, duration: 1.9)
+            expand.timingMode = .easeOut
+            let fade = SCNAction.fadeOut(duration: 1.9)
+            fade.timingMode = .easeOut
+            let cycle = SCNAction.sequence([
+                reset,
+                .group([expand, fade]),
+                .wait(duration: 0.15),
+            ])
+            ping.runAction(.sequence([
+                .wait(duration: delay),
+                .repeatForever(cycle),
+            ]))
+
+            return ping
         }
 
         private func focus(on location: CardLocation) {
@@ -1055,7 +1099,8 @@ private extension PlanetarySceneContainer {
 
         private func applyZoom(delta: CGFloat) {
             let currentDistance = CGFloat(cameraNode.position.z)
-            let nextDistance = min(max(currentDistance - (delta * 1.6), 1.8), 5.6)
+            let minimumDistance: CGFloat = 1.12
+            let nextDistance = min(max(currentDistance - (delta * 1.6), minimumDistance), 5.6)
             cameraNode.position.z = SCNFloat(nextDistance)
         }
 
