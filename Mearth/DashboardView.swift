@@ -365,7 +365,7 @@ private struct TemperatureCardView: View {
 
     var body: some View {
         cardContent
-            .opacity(showsLoadingPulse ? (isPulsing ? 0.7 : 1.0) : 1.0)
+            .opacity(showsLoadingPulse ? (isPulsing ? 0.8 : 1.0) : 1.0)
             .task(id: showsLoadingPulse) {
                 guard showsLoadingPulse else {
                     isPulsing = false

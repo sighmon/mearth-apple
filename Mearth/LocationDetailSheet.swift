@@ -792,6 +792,8 @@ private extension PlanetarySceneContainer {
                 let markerRadius = isSelected ? 0.045 : 0.026
                 let markerCenterRadius = 1.0 - (Double(markerRadius) * 0.5)
                 let position = pointOnSphere(latitude: site.latitude, longitude: site.longitude, radius: markerCenterRadius)
+                let pulsePosition = pointOnSphere(latitude: site.latitude, longitude: site.longitude, radius: 1.01)
+                let pulseNormal = normalizedVector(for: pulsePosition)
 
                 let hitTarget = SCNNode(geometry: SCNSphere(radius: isSelected ? 0.08 : 0.055))
                 let hitMaterial = SCNMaterial()
@@ -816,45 +818,48 @@ private extension PlanetarySceneContainer {
                 siteNodes.addChildNode(marker)
 
                 if isSelected {
-                    siteNodes.addChildNode(selectionHaloNode(position: position))
-                    siteNodes.addChildNode(selectionPingNode(position: position, delay: 0.0))
-                    siteNodes.addChildNode(selectionPingNode(position: position, delay: 0.95))
+                    siteNodes.addChildNode(selectionHaloNode(position: pulsePosition, normal: pulseNormal))
+                    siteNodes.addChildNode(selectionPingNode(position: pulsePosition, normal: pulseNormal, delay: 0.0))
+                    siteNodes.addChildNode(selectionPingNode(position: pulsePosition, normal: pulseNormal, delay: 0.95))
                 }
             }
         }
 
-        private func selectionHaloNode(position: SCNVector3) -> SCNNode {
-            let halo = SCNNode(geometry: SCNSphere(radius: 0.065))
+        private func selectionHaloNode(position: SCNVector3, normal: SIMD3<Float>) -> SCNNode {
+            let halo = SCNNode(geometry: SCNTorus(ringRadius: 0.05, pipeRadius: 0.0028))
             let haloMaterial = SCNMaterial()
             haloMaterial.lightingModel = .constant
-            haloMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.18)
-            haloMaterial.transparency = 0.24
+            haloMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.26)
+            haloMaterial.emission.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.18)
+            haloMaterial.transparency = 0.3
             haloMaterial.readsFromDepthBuffer = false
             haloMaterial.writesToDepthBuffer = false
             halo.geometry?.firstMaterial = haloMaterial
             halo.position = position
+            halo.simdOrientation = surfaceOrientation(for: normal)
             return halo
         }
 
-        private func selectionPingNode(position: SCNVector3, delay: TimeInterval) -> SCNNode {
-            let ping = SCNNode(geometry: SCNSphere(radius: 0.055))
+        private func selectionPingNode(position: SCNVector3, normal: SIMD3<Float>, delay: TimeInterval) -> SCNNode {
+            let ping = SCNNode(geometry: SCNTorus(ringRadius: 0.05, pipeRadius: 0.0038))
             let pingMaterial = SCNMaterial()
             pingMaterial.lightingModel = .constant
-            pingMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.42)
-            pingMaterial.emission.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.3)
-            pingMaterial.transparency = 0.42
+            pingMaterial.diffuse.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.52)
+            pingMaterial.emission.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.34)
+            pingMaterial.transparency = 0.5
             pingMaterial.readsFromDepthBuffer = false
             pingMaterial.writesToDepthBuffer = false
             ping.geometry?.firstMaterial = pingMaterial
             ping.position = position
+            ping.simdOrientation = surfaceOrientation(for: normal)
             ping.opacity = 0.0
-            ping.scale = SCNVector3(0.72, 0.72, 0.72)
+            ping.scale = SCNVector3(1.0, 1.0, 1.0)
 
             let reset = SCNAction.run { node in
                 node.opacity = 0.68
-                node.scale = SCNVector3(0.72, 0.72, 0.72)
+                node.scale = SCNVector3(1.0, 1.0, 1.0)
             }
-            let expand = SCNAction.scale(to: 2.45, duration: 1.9)
+            let expand = SCNAction.scale(to: 2, duration: 1.9)
             expand.timingMode = .easeOut
             let fade = SCNAction.fadeOut(duration: 1.9)
             fade.timingMode = .easeOut
@@ -1145,6 +1150,14 @@ private extension PlanetarySceneContainer {
                 return axis / length
             }
             return axis
+        }
+
+        private func normalizedVector(for vector: SCNVector3) -> SIMD3<Float> {
+            normalizedAxis(SIMD3<Float>(Float(vector.x), Float(vector.y), Float(vector.z)))
+        }
+
+        private func surfaceOrientation(for normal: SIMD3<Float>) -> simd_quatf {
+            simd_quatf(from: SIMD3<Float>(0, 1, 0), to: normal)
         }
 
         private func pointOnSphere(latitude: Double, longitude: Double, radius: Double) -> SCNVector3 {
