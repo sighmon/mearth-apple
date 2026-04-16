@@ -8,6 +8,8 @@ Mearth is a SwiftUI app for iPhone, iPad, Mac, Apple TV, widgets, and iOS Live A
 
 Based on our [2013 NASA SpaceApps Challenge](https://github.com/sighmon/mearth)
 
+Apple App Store: https://apps.apple.com/us/app/mearth/id6761681461
+
 Test Flight: https://testflight.apple.com/join/T2J3xSeS
 
 ## Functionality
