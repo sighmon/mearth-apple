@@ -2,6 +2,7 @@ import MapKit
 import SceneKit
 import SwiftUI
 import ImageIO
+import CryptoKit
 
 struct LocationDetailSheet: View {
     let card: TemperatureCard
@@ -1209,6 +1210,32 @@ private extension PlanetarySceneContainer {
 }
 
 private enum PlanetaryTextureComposer {
+    private struct TextureTileGrid {
+        let rows: [[URL]]
+
+        init(rows: [[URL]]) {
+            self.rows = rows
+        }
+
+        init(basePath: String, fileExtension: String, zoomLevel: Int) {
+            let rowCount = 1 << zoomLevel
+            let columnCount = 2 << zoomLevel
+            rows = (0..<rowCount).map { row in
+                (0..<columnCount).map { column in
+                    URL(
+                        string: "https://trek.nasa.gov/tiles/\(basePath)/1.0.0/default/default028mm/\(zoomLevel)/\(row)/\(column).\(fileExtension)"
+                    )!
+                }
+            }
+        }
+    }
+
+    private static let tileCacheDirectory: URL = {
+        let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        return (cachesDirectory ?? FileManager.default.temporaryDirectory)
+            .appendingPathComponent("PlanetaryTextureTiles", isDirectory: true)
+    }()
+
     static func makeTexture(for body: CelestialBody) async -> CGImage? {
         if let cached = await PlanetaryTextureCache.shared.cachedTexture(for: body) {
             return cached
@@ -1226,63 +1253,109 @@ private enum PlanetaryTextureComposer {
     }
 
     private static func renderTexture(for body: CelestialBody) async -> CGImage? {
-        let urls = textureURLs(for: body)
-        guard !urls.isEmpty else {
+        let grid = textureTileGrid(for: body)
+        guard !grid.rows.isEmpty else {
             return nil
         }
 
-        var images: [CGImage] = []
-        for url in urls {
-            guard let image = await loadImage(from: url) else {
+        var stitchedRows: [[CGImage]] = []
+        for row in grid.rows {
+            var images: [CGImage] = []
+            for url in row {
+                guard let image = await loadImage(from: url) else {
+                    return nil
+                }
+                images.append(image)
+            }
+            guard !images.isEmpty else {
                 return nil
             }
-            images.append(image)
+            stitchedRows.append(images)
         }
 
-        return stitch(images: images)
+        guard let stitched = stitch(rows: stitchedRows) else {
+            return nil
+        }
+
+        if body == .mars {
+            return colorizeMarsTexture(stitched) ?? stitched
+        }
+
+        return stitched
     }
 
-    private static func textureURLs(for body: CelestialBody) -> [URL] {
+    private static func textureTileGrid(for body: CelestialBody) -> TextureTileGrid {
         switch body {
         case .mars:
-            return [
-                URL(string: "https://trek.nasa.gov/tiles/Mars/EQ/msss_atlas_simp_clon/1.0.0/default/default028mm/0/0/0.png")!,
-                URL(string: "https://trek.nasa.gov/tiles/Mars/EQ/msss_atlas_simp_clon/1.0.0/default/default028mm/0/0/1.png")!,
-            ]
+            return TextureTileGrid(
+                basePath: "Mars/EQ/msss_atlas_simp_clon",
+                fileExtension: "png",
+                zoomLevel: 2
+            )
         case .moon:
-            return [
-                URL(string: "https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/0/0/0.jpg")!,
-                URL(string: "https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/0/0/1.jpg")!,
-            ]
+            return TextureTileGrid(
+                basePath: "Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02",
+                fileExtension: "jpg",
+                zoomLevel: 2
+            )
         case .earth:
-            return []
+            return TextureTileGrid(rows: [])
         }
     }
 
     private static func loadImage(from url: URL) async -> CGImage? {
+        let cachedFileURL = cachedTileURL(for: url)
+        if let cachedData = try? Data(contentsOf: cachedFileURL),
+           let cachedImage = decodeImage(from: cachedData) {
+            return cachedImage
+        }
+
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let response = response as? HTTPURLResponse, 200..<300 ~= response.statusCode else {
                 return nil
             }
 
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-                return nil
-            }
-
-            return CGImageSourceCreateImageAtIndex(source, 0, nil)
+            try? ensureTileCacheDirectoryExists()
+            try? data.write(to: cachedFileURL, options: .atomic)
+            return decodeImage(from: data)
         } catch {
             return nil
         }
     }
 
-    private static func stitch(images: [CGImage]) -> CGImage? {
-        guard let first = images.first else {
+    private static func cachedTileURL(for remoteURL: URL) -> URL {
+        let cacheKey = SHA256.hash(data: Data(remoteURL.absoluteString.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let fileExtension = remoteURL.pathExtension.isEmpty ? "tile" : remoteURL.pathExtension
+        return tileCacheDirectory.appendingPathComponent("\(cacheKey).\(fileExtension)")
+    }
+
+    private static func ensureTileCacheDirectoryExists() throws {
+        try FileManager.default.createDirectory(
+            at: tileCacheDirectory,
+            withIntermediateDirectories: true
+        )
+    }
+
+    private static func decodeImage(from data: Data) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             return nil
         }
 
-        let width = images.reduce(0) { $0 + $1.width }
-        let height = first.height
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    private static func stitch(rows: [[CGImage]]) -> CGImage? {
+        guard let firstRow = rows.first, !firstRow.isEmpty else {
+            return nil
+        }
+
+        let width = firstRow.reduce(0) { $0 + $1.width }
+        let height = rows.reduce(0) { partialResult, row in
+            partialResult + (row.first?.height ?? 0)
+        }
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
             data: nil,
@@ -1296,11 +1369,50 @@ private enum PlanetaryTextureComposer {
             return nil
         }
 
-        var currentX = 0
-        for image in images {
-            context.draw(image, in: CGRect(x: currentX, y: 0, width: image.width, height: height))
-            currentX += image.width
+        var currentY = height
+        for row in rows {
+            guard let rowHeight = row.first?.height else {
+                return nil
+            }
+
+            currentY -= rowHeight
+            var currentX = 0
+            for image in row {
+                context.draw(
+                    image,
+                    in: CGRect(x: currentX, y: currentY, width: image.width, height: image.height)
+                )
+                currentX += image.width
+            }
         }
+
+        return context.makeImage()
+    }
+
+    private static func colorizeMarsTexture(_ image: CGImage) -> CGImage? {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.draw(image, in: rect)
+
+        context.setBlendMode(.multiply)
+        context.setFillColor(CGColor(red: 0.78, green: 0.52, blue: 0.33, alpha: 0.75))
+        context.fill(rect)
+
+        context.setBlendMode(.overlay)
+        context.setFillColor(CGColor(red: 0.96, green: 0.67, blue: 0.42, alpha: 0.22))
+        context.fill(rect)
 
         return context.makeImage()
     }
