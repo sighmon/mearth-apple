@@ -645,6 +645,8 @@ private extension PlanetarySceneContainer {
         private let siteNodes = SCNNode()
         private let textureMaterial = SCNMaterial()
         private let cameraNode = SCNNode()
+        private let globeRadius: CGFloat = 1.0
+        private let minimumSurfaceClearance: CGFloat = 0.08
         private var focusedLocationID: String?
         private var loadedBody: CelestialBody?
         private var currentBody: CelestialBody = .moon
@@ -734,6 +736,8 @@ private extension PlanetarySceneContainer {
 
             let camera = SCNCamera()
             camera.fieldOfView = 42
+            camera.zNear = 0.01
+            camera.zFar = 20
             cameraNode.camera = camera
             cameraNode.position = SCNVector3(0, 0, 3.2)
             scene.rootNode.addChildNode(cameraNode)
@@ -1107,7 +1111,7 @@ private extension PlanetarySceneContainer {
 
         private func applyZoom(delta: CGFloat) {
             let currentDistance = CGFloat(cameraNode.position.z)
-            let minimumDistance: CGFloat = 1.12
+            let minimumDistance = globeRadius + minimumSurfaceClearance
             let nextDistance = min(max(currentDistance - (delta * 1.6), minimumDistance), 5.6)
             cameraNode.position.z = SCNFloat(nextDistance)
         }
@@ -1290,7 +1294,7 @@ private enum PlanetaryTextureComposer {
             return TextureTileGrid(
                 basePath: "Mars/EQ/msss_atlas_simp_clon",
                 fileExtension: "png",
-                zoomLevel: 2
+                zoomLevel: 3
             )
         case .moon:
             return TextureTileGrid(
