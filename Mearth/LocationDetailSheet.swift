@@ -10,6 +10,7 @@ struct LocationDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var temperatureUnitStore: TemperatureUnitStore
     @State private var selectedPlanetarySiteID: String?
+    @State private var sunlightEnabled = true
 
     var body: some View {
         NavigationStack {
@@ -25,6 +26,7 @@ struct LocationDetailSheet: View {
                             PlanetaryLocationView(
                                 location: baseLocation,
                                 sites: planetarySites,
+                                sunlightEnabled: sunlightEnabled,
                                 maxHeight: max(proxy.size.height * 0.5, 320)
                             ) { siteID in
                                 selectedPlanetarySiteID = siteID
@@ -115,9 +117,19 @@ struct LocationDetailSheet: View {
     private var metricsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !card.supportingMetrics.isEmpty {
-                Text("Current Exposure")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                HStack(alignment: .center, spacing: 12) {
+                    Text("Current Exposure")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Spacer(minLength: 12)
+
+                    if detailLocation.body == .mars || detailLocation.body == .moon {
+                        Toggle("Sunlight", isOn: $sunlightEnabled)
+                            .toggleStyle(.switch)
+                            .font(.subheadline.weight(.medium))
+                    }
+                }
 
                 ForEach(card.supportingMetrics) { metric in
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -364,6 +376,16 @@ struct LocationDetailSheet: View {
                     title: "NASA/JPL Curiosity RAD Context",
                     url: URL(string: "https://www.jpl.nasa.gov/images/pia16020-curiositys-first-radiation-measurements-on-mars/")!,
                     note: "Background reference for Mars surface ionizing radiation measured by Curiosity's Radiation Assessment Detector."
+                ),
+                SourceLink(
+                    title: "NASA GISS Mars24 Sunclock",
+                    url: URL(string: "https://www.giss.nasa.gov/tools/mars24/index.html")!,
+                    note: "Reference for Mars solar time and the day-night geometry used to place the Mars sunlight terminator."
+                ),
+                SourceLink(
+                    title: "NASA GISS Mars24 Technical Notes",
+                    url: URL(string: "https://www.giss.nasa.gov/tools/mars24/help/notes.html")!,
+                    note: "Technical notes on coordinated Mars time and local mean solar time, which the globe sunlight model is based on."
                 )
             ]
         case .moon:
@@ -377,6 +399,11 @@ struct LocationDetailSheet: View {
                     title: "NASA Earth UV Index Context",
                     url: URL(string: "https://neo.gsfc.nasa.gov/view.php?datasetId=AURA_UVI_CLIM_M")!,
                     note: "Reference for the UV Index scale that the lunar UV-equivalent estimate is mapped against."
+                ),
+                SourceLink(
+                    title: "NASA Moon Phase and Libration",
+                    url: URL(string: "https://science.nasa.gov/resource/moon-phase-and-libration-2026/")!,
+                    note: "Reference for the Moon's subsolar point, phase, and illuminated hemisphere used to place the lunar sunlight terminator."
                 )
             ]
         case .earth:
@@ -503,6 +530,7 @@ private struct EarthLocationMap: View {
 private struct PlanetaryLocationView: View {
     let location: CardLocation
     let sites: [PlanetarySite]
+    let sunlightEnabled: Bool
     let maxHeight: CGFloat
     let onSiteSelected: (String) -> Void
 
@@ -537,6 +565,7 @@ private struct PlanetaryLocationView: View {
                 celestialBody: location.body,
                 focusedLocation: focusedSite.location,
                 sites: sites,
+                sunlightEnabled: sunlightEnabled,
                 selectedSiteID: resolvedSelectedSiteID,
                 onSiteSelected: { siteID in
                     selectedSiteID = siteID
@@ -554,6 +583,7 @@ private struct PlanetaryGlobeView: View {
     let celestialBody: CelestialBody
     let focusedLocation: CardLocation
     let sites: [PlanetarySite]
+    let sunlightEnabled: Bool
     let selectedSiteID: String
     let onSiteSelected: (String) -> Void
 
@@ -562,6 +592,7 @@ private struct PlanetaryGlobeView: View {
             celestialBody: celestialBody,
             focusedLocation: focusedLocation,
             sites: sites,
+            sunlightEnabled: sunlightEnabled,
             selectedSiteID: selectedSiteID,
             onSiteSelected: onSiteSelected
         )
@@ -575,6 +606,7 @@ private struct PlanetarySceneContainer: NSViewRepresentable {
     let celestialBody: CelestialBody
     let focusedLocation: CardLocation
     let sites: [PlanetarySite]
+    let sunlightEnabled: Bool
     let selectedSiteID: String
     let onSiteSelected: (String) -> Void
 
@@ -587,6 +619,7 @@ private struct PlanetarySceneContainer: NSViewRepresentable {
             celestialBody: celestialBody,
             focusedLocation: focusedLocation,
             sites: sites,
+            sunlightEnabled: sunlightEnabled,
             selectedSiteID: selectedSiteID,
             onSiteSelected: onSiteSelected
         )
@@ -598,6 +631,7 @@ private struct PlanetarySceneContainer: NSViewRepresentable {
             celestialBody: celestialBody,
             focusedLocation: focusedLocation,
             sites: sites,
+            sunlightEnabled: sunlightEnabled,
             selectedSiteID: selectedSiteID,
             onSiteSelected: onSiteSelected
         )
@@ -608,6 +642,7 @@ private struct PlanetarySceneContainer: UIViewRepresentable {
     let celestialBody: CelestialBody
     let focusedLocation: CardLocation
     let sites: [PlanetarySite]
+    let sunlightEnabled: Bool
     let selectedSiteID: String
     let onSiteSelected: (String) -> Void
 
@@ -620,6 +655,7 @@ private struct PlanetarySceneContainer: UIViewRepresentable {
             celestialBody: celestialBody,
             focusedLocation: focusedLocation,
             sites: sites,
+            sunlightEnabled: sunlightEnabled,
             selectedSiteID: selectedSiteID,
             onSiteSelected: onSiteSelected
         )
@@ -631,6 +667,7 @@ private struct PlanetarySceneContainer: UIViewRepresentable {
             celestialBody: celestialBody,
             focusedLocation: focusedLocation,
             sites: sites,
+            sunlightEnabled: sunlightEnabled,
             selectedSiteID: selectedSiteID,
             onSiteSelected: onSiteSelected
         )
@@ -645,6 +682,10 @@ private extension PlanetarySceneContainer {
         private let siteNodes = SCNNode()
         private let textureMaterial = SCNMaterial()
         private let cameraNode = SCNNode()
+        private let ambientNode = SCNNode()
+        private let keyNode = SCNNode()
+        private let fillNode = SCNNode()
+        private let sunLightNode = SCNNode()
         private let globeRadius: CGFloat = 1.0
         private let minimumSurfaceClearance: CGFloat = 0.08
         private var focusedLocationID: String?
@@ -665,6 +706,7 @@ private extension PlanetarySceneContainer {
             celestialBody: CelestialBody,
             focusedLocation: CardLocation,
             sites: [PlanetarySite],
+            sunlightEnabled: Bool,
             selectedSiteID: String,
             onSiteSelected: @escaping (String) -> Void
         ) -> SCNView {
@@ -674,6 +716,7 @@ private extension PlanetarySceneContainer {
                 celestialBody: celestialBody,
                 focusedLocation: focusedLocation,
                 sites: sites,
+                sunlightEnabled: sunlightEnabled,
                 selectedSiteID: selectedSiteID,
                 onSiteSelected: onSiteSelected
             )
@@ -685,6 +728,7 @@ private extension PlanetarySceneContainer {
             celestialBody: CelestialBody,
             focusedLocation: CardLocation,
             sites: [PlanetarySite],
+            sunlightEnabled: Bool,
             selectedSiteID: String,
             onSiteSelected: @escaping (String) -> Void
         ) {
@@ -697,6 +741,7 @@ private extension PlanetarySceneContainer {
                     celestialBody: celestialBody,
                     focusedLocation: focusedLocation,
                     sites: sites,
+                    sunlightEnabled: sunlightEnabled,
                     selectedSiteID: selectedSiteID,
                     onSiteSelected: onSiteSelected
                 )
@@ -707,6 +752,7 @@ private extension PlanetarySceneContainer {
                 focusedLocationID = focusedLocation.id
             }
 
+            updateLighting(for: celestialBody, at: Date(), sunlightEnabled: sunlightEnabled)
             updateSites(sites, selectedSiteID: selectedSiteID)
 
             if loadedBody != celestialBody {
@@ -721,6 +767,7 @@ private extension PlanetarySceneContainer {
             celestialBody: CelestialBody,
             focusedLocation: CardLocation,
             sites: [PlanetarySite],
+            sunlightEnabled: Bool,
             selectedSiteID: String,
             onSiteSelected: @escaping (String) -> Void
         ) {
@@ -745,14 +792,12 @@ private extension PlanetarySceneContainer {
             let ambientLight = SCNLight()
             ambientLight.type = .ambient
             ambientLight.intensity = 650
-            let ambientNode = SCNNode()
             ambientNode.light = ambientLight
             scene.rootNode.addChildNode(ambientNode)
 
             let keyLight = SCNLight()
             keyLight.type = .directional
             keyLight.intensity = 1250
-            let keyNode = SCNNode()
             keyNode.light = keyLight
             keyNode.eulerAngles = SCNVector3(-0.55, 0.85, 0)
             scene.rootNode.addChildNode(keyNode)
@@ -760,10 +805,15 @@ private extension PlanetarySceneContainer {
             let fillLight = SCNLight()
             fillLight.type = .directional
             fillLight.intensity = 360
-            let fillNode = SCNNode()
             fillNode.light = fillLight
             fillNode.eulerAngles = SCNVector3(0.4, -1.3, 0)
             scene.rootNode.addChildNode(fillNode)
+
+            let sunLight = SCNLight()
+            sunLight.type = .directional
+            sunLight.intensity = 0
+            sunLight.color = CGColor(red: 1.0, green: 0.97, blue: 0.91, alpha: 1.0)
+            sunLightNode.light = sunLight
 
             let sphere = SCNSphere(radius: 1.0)
             sphere.segmentCount = 160
@@ -776,7 +826,9 @@ private extension PlanetarySceneContainer {
 
             globeNode.geometry = sphere
             scene.rootNode.addChildNode(globeNode)
+            globeNode.addChildNode(sunLightNode)
             globeNode.addChildNode(siteNodes)
+            updateLighting(for: celestialBody, at: Date(), sunlightEnabled: sunlightEnabled)
 
             attachInteraction(to: sceneView)
             update(
@@ -784,6 +836,7 @@ private extension PlanetarySceneContainer {
                 celestialBody: celestialBody,
                 focusedLocation: focusedLocation,
                 sites: sites,
+                sunlightEnabled: sunlightEnabled,
                 selectedSiteID: selectedSiteID,
                 onSiteSelected: onSiteSelected
             )
@@ -917,6 +970,47 @@ private extension PlanetarySceneContainer {
                     self.applyTextureOrientation(for: body)
                 }
             }
+        }
+
+        private func updateLighting(for body: CelestialBody, at date: Date, sunlightEnabled: Bool) {
+            guard sunlightEnabled else {
+                ambientNode.light?.intensity = 650
+                keyNode.light?.intensity = 1_250
+                fillNode.light?.intensity = 360
+                sunLightNode.light?.intensity = 0
+                return
+            }
+
+            switch body {
+            case .mars:
+                ambientNode.light?.intensity = 80
+                keyNode.light?.intensity = 0
+                fillNode.light?.intensity = 120
+                sunLightNode.light?.intensity = 1_850
+                positionSunLight(
+                    latitude: 0,
+                    longitude: PlanetaryIllumination.marsSubsolarLongitude(at: date)
+                )
+            case .moon:
+                ambientNode.light?.intensity = 50
+                keyNode.light?.intensity = 0
+                fillNode.light?.intensity = 70
+                sunLightNode.light?.intensity = 2_100
+                positionSunLight(
+                    latitude: 0,
+                    longitude: PlanetaryIllumination.moonSubsolarLongitude(at: date)
+                )
+            case .earth:
+                ambientNode.light?.intensity = 650
+                keyNode.light?.intensity = 1_250
+                fillNode.light?.intensity = 360
+                sunLightNode.light?.intensity = 0
+            }
+        }
+
+        private func positionSunLight(latitude: Double, longitude: Double) {
+            sunLightNode.position = pointOnSphere(latitude: latitude, longitude: longitude, radius: 4.0)
+            sunLightNode.look(at: SCNVector3Zero)
         }
 
         private func applyTextureOrientation(for body: CelestialBody) {
@@ -1210,6 +1304,35 @@ private extension PlanetarySceneContainer {
             }
             return nil
         }
+    }
+}
+
+private enum PlanetaryIllumination {
+    private static let moonSynodicMonth = 29.530588853
+    private static let moonReferenceNewMoon = ISO8601DateFormatter().date(from: "2000-01-06T18:14:00Z")!
+
+    static func moonSubsolarLongitude(at date: Date) -> Double {
+        let ageDays = positiveModulo(date.timeIntervalSince(moonReferenceNewMoon) / 86_400, moonSynodicMonth)
+        let phaseDegrees = (ageDays / moonSynodicMonth) * 360
+        return signedModulo(180 - phaseDegrees, 360)
+    }
+
+    static func marsSubsolarLongitude(at date: Date) -> Double {
+        let utcJulianDate = date.timeIntervalSince1970 / 86_400 + 2_440_587.5
+        let terrestrialTimeJulianDate = utcJulianDate + 69.184 / 86_400
+        let marsSolDate = (terrestrialTimeJulianDate - 2_405_522.002_877_9) / 1.027_491_251_7
+        let coordinatedMarsTime = positiveModulo(marsSolDate * 24, 24)
+        return signedModulo((12 - coordinatedMarsTime) * 15, 360)
+    }
+
+    private static func positiveModulo(_ value: Double, _ modulus: Double) -> Double {
+        let remainder = value.truncatingRemainder(dividingBy: modulus)
+        return remainder >= 0 ? remainder : remainder + modulus
+    }
+
+    private static func signedModulo(_ value: Double, _ modulus: Double) -> Double {
+        let normalized = positiveModulo(value, modulus)
+        return normalized > modulus / 2 ? normalized - modulus : normalized
     }
 }
 
