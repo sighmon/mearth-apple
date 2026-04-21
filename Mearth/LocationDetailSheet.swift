@@ -125,9 +125,15 @@ struct LocationDetailSheet: View {
                     Spacer(minLength: 12)
 
                     if detailLocation.body == .mars || detailLocation.body == .moon {
-                        Toggle("Sunlight", isOn: $sunlightEnabled)
-                            .toggleStyle(.switch)
-                            .font(.subheadline.weight(.medium))
+                        HStack(spacing: 8) {
+                            Text("Sunlight")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+
+                            Toggle("", isOn: $sunlightEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
                     }
                 }
 
