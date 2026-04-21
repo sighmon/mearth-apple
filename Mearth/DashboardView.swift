@@ -41,6 +41,7 @@ struct DashboardView: View {
                             cardGrid
                         }
                         .frame(maxWidth: contentMaxWidth)
+                        .padding(.top, homeCardsTopPadding)
                         .padding(.horizontal, horizontalPadding)
                         .padding(.vertical, 28)
 
@@ -254,6 +255,14 @@ struct DashboardView: View {
             return "clock.arrow.trianglehead.counterclockwise.rotate.90"
         }
         return "checkmark.seal.fill"
+    }
+
+    private var homeCardsTopPadding: CGFloat {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .phone ? 12 : 0
+        #else
+        0
+        #endif
     }
 
     private var statusDate: Date? {
