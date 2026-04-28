@@ -792,9 +792,12 @@ private struct EarthTemperatureMapMarker: View {
                 Text(temperature)
                     .font(.system(.caption, weight: .bold))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(isSelectedMatch ? .black : .white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
+                    .frame(minWidth: 48)
                     .background(
                         Capsule(style: .continuous)
                             .fill(isSelectedMatch ? Color.yellow : Color.black.opacity(0.74))
@@ -803,6 +806,7 @@ private struct EarthTemperatureMapMarker: View {
                         Capsule(style: .continuous)
                             .stroke(Color.white.opacity(isSelectedMatch ? 0.8 : 0.34), lineWidth: 1)
                     )
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             Image(systemName: "mappin.circle.fill")
