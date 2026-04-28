@@ -99,10 +99,12 @@ struct LocationDetailSheet: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .minimumScaleFactor(0.78)
+                .frame(height: 28, alignment: .leading)
 
             Text(detailLocation.body.rawValue.capitalized)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
+                .frame(height: 20, alignment: .leading)
 
             Text(displayValue)
                 .font(.system(size: 34, weight: .bold))
