@@ -120,7 +120,7 @@ struct LocationDetailSheet: View {
 
     private var metricsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !card.supportingMetrics.isEmpty {
+            if !displayedSupportingMetrics.isEmpty {
                 HStack(alignment: .center, spacing: 12) {
                     Text("Current Exposure")
                         .font(.headline)
@@ -141,7 +141,7 @@ struct LocationDetailSheet: View {
                     }
                 }
 
-                ForEach(card.supportingMetrics) { metric in
+                ForEach(displayedSupportingMetrics) { metric in
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(metric.label)
                             .font(.system(.caption, weight: .bold))
@@ -368,6 +368,9 @@ struct LocationDetailSheet: View {
 
     private var detailSourceNote: String? {
         if let displayedPlanetarySite, detailLocation.body != .earth {
+            if selectedPlanetarySite != nil, let localHour = estimatedPlanetaryConditions?.localHour {
+                return "\(displayedPlanetarySite.mission) · \(displayedPlanetarySite.metadataLine) · local time \(Self.hourMinuteString(localHour))"
+            }
             return "\(displayedPlanetarySite.mission) · \(displayedPlanetarySite.metadataLine)"
         }
         return card.sourceNote
@@ -451,10 +454,51 @@ struct LocationDetailSheet: View {
     }
 
     private var displayValue: String {
-        if let temperatureCelsius = card.temperatureCelsius {
+        if let temperatureCelsius = displayedTemperatureCelsius {
             return temperatureUnitStore.formattedTemperature(celsius: temperatureCelsius)
         }
         return card.value
+    }
+
+    private var displayedTemperatureCelsius: Double? {
+        estimatedPlanetaryConditions?.temperatureCelsius ?? card.temperatureCelsius
+    }
+
+    private var displayedSupportingMetrics: [CardSupportingMetric] {
+        guard let conditions = estimatedPlanetaryConditions else {
+            return card.supportingMetrics
+        }
+
+        return [
+            CardSupportingMetric(label: "UV INDEX", value: Self.uvIndexString(conditions.uvIndex)),
+            CardSupportingMetric(label: "RADIATION", value: Self.radiationString(conditions.radiationDoseRate)),
+        ]
+    }
+
+    private var estimatedPlanetaryConditions: EstimatedPlanetaryConditions? {
+        guard selectedPlanetarySite != nil else {
+            return nil
+        }
+
+        switch detailLocation.body {
+        case .mars:
+            guard let referenceTemperature = card.temperatureCelsius else {
+                return nil
+            }
+            return PlanetaryTemperatureEstimator.estimateMars(
+                at: card.lastUpdated,
+                location: detailLocation,
+                referenceLocation: baseLocation,
+                referenceTemperatureCelsius: referenceTemperature
+            )
+        case .moon:
+            return PlanetaryTemperatureEstimator.estimateMoon(
+                at: card.lastUpdated,
+                location: detailLocation
+            )
+        case .earth:
+            return nil
+        }
     }
 
     private func formattedTemperature(_ value: Double, fractionDigits: Int) -> String {
@@ -470,6 +514,18 @@ struct LocationDetailSheet: View {
             return "--"
         }
         return String(format: "%.1f", value)
+    }
+
+    private static func radiationString(_ value: Double) -> String {
+        "\(String(format: "%.2f", value)) µSv/h"
+    }
+
+    private static func hourMinuteString(_ hourValue: Double) -> String {
+        let normalized = PlanetaryTemperatureEstimator.positiveModulo(hourValue, 24)
+        let totalMinutes = Int((normalized * 60).rounded())
+        let hours = (totalMinutes / 60) % 24
+        let minutes = totalMinutes % 60
+        return String(format: "%02d:%02d", hours, minutes)
     }
 
     private var isAutomaticTemperatureUnit: Bool {
@@ -502,6 +558,123 @@ struct LocationDetailSheet: View {
                 temperatureUnitStore.setPreference(isFahrenheit ? .fahrenheit : .celsius)
             }
         )
+    }
+}
+
+private struct EstimatedPlanetaryConditions {
+    let temperatureCelsius: Double
+    let uvIndex: Double?
+    let radiationDoseRate: Double
+    let localHour: Double
+}
+
+private enum PlanetaryTemperatureEstimator {
+    private static let marsRadiationDoseRate = 27.8
+    private static let moonRadiationDoseRate = 32.0
+    private static let moonMinimumTemperature = -173.0
+    private static let moonMaximumTemperature = 127.0
+    private static let moonPeakTemperatureHour = 14.0
+
+    static func estimateMars(
+        at date: Date,
+        location: CardLocation,
+        referenceLocation: CardLocation,
+        referenceTemperatureCelsius: Double
+    ) -> EstimatedPlanetaryConditions {
+        let localHour = solarLocalHour(
+            longitude: location.longitude,
+            subsolarLongitude: PlanetaryIllumination.marsSubsolarLongitude(at: date)
+        )
+        let referenceLocalHour = solarLocalHour(
+            longitude: referenceLocation.longitude,
+            subsolarLongitude: PlanetaryIllumination.marsSubsolarLongitude(at: date)
+        )
+        let diurnalDelta = marsDiurnalOffset(localHour) - marsDiurnalOffset(referenceLocalHour)
+        let latitudeDelta = marsLatitudeOffset(latitude: location.latitude) - marsLatitudeOffset(latitude: referenceLocation.latitude)
+        let temperature = min(25, max(-125, referenceTemperatureCelsius + diurnalDelta + latitudeDelta))
+
+        return EstimatedPlanetaryConditions(
+            temperatureCelsius: temperature,
+            uvIndex: daylightUVIndex(peakIndex: 6.5, localHour: localHour, sunrise: 6, sunset: 18, exponent: 0.92),
+            radiationDoseRate: marsRadiationDoseRate,
+            localHour: localHour
+        )
+    }
+
+    static func estimateMoon(at date: Date, location: CardLocation) -> EstimatedPlanetaryConditions {
+        let localHour = solarLocalHour(
+            longitude: location.longitude,
+            subsolarLongitude: PlanetaryIllumination.moonSubsolarLongitude(at: date)
+        )
+        let temperature = moonSurfaceTemperature(localHour: localHour, latitude: location.latitude)
+
+        return EstimatedPlanetaryConditions(
+            temperatureCelsius: temperature,
+            uvIndex: daylightUVIndex(peakIndex: 12.0, localHour: localHour, sunrise: 6, sunset: 18, exponent: 0.9),
+            radiationDoseRate: moonRadiationDoseRate,
+            localHour: localHour
+        )
+    }
+
+    static func positiveModulo(_ value: Double, _ modulus: Double) -> Double {
+        let remainder = value.truncatingRemainder(dividingBy: modulus)
+        return remainder >= 0 ? remainder : remainder + modulus
+    }
+
+    private static func solarLocalHour(longitude: Double, subsolarLongitude: Double) -> Double {
+        positiveModulo(12 + signedModulo(longitude - subsolarLongitude, 360) / 15, 24)
+    }
+
+    private static func marsDiurnalOffset(_ localHour: Double) -> Double {
+        let shiftedHour = positiveModulo(localHour - 14, 24)
+        let cyclePosition = shiftedHour / 24
+        let thermalWave = cos(cyclePosition * 2 * .pi)
+        return 26 * (thermalWave >= 0 ? pow(thermalWave, 0.82) : -pow(abs(thermalWave), 1.25))
+    }
+
+    private static func marsLatitudeOffset(latitude: Double) -> Double {
+        -0.32 * abs(latitude)
+    }
+
+    private static func moonSurfaceTemperature(localHour: Double, latitude: Double) -> Double {
+        let latitudeScale = max(0.08, cos(abs(latitude) * .pi / 180))
+        let effectiveMaximum = moonMinimumTemperature + (moonMaximumTemperature - moonMinimumTemperature) * latitudeScale
+        let midpoint = (effectiveMaximum + moonMinimumTemperature) / 2
+        let amplitude = (effectiveMaximum - moonMinimumTemperature) / 2
+        let shiftedHour = positiveModulo(localHour - moonPeakTemperatureHour, 24)
+        let cyclePosition = shiftedHour / 24
+        let thermalWave = cos(cyclePosition * 2 * .pi)
+        let smoothedWave = thermalWave >= 0
+            ? pow(thermalWave, 0.82)
+            : -pow(abs(thermalWave), 0.92)
+
+        return midpoint + amplitude * smoothedWave
+    }
+
+    private static func daylightUVIndex(
+        peakIndex: Double?,
+        localHour: Double,
+        sunrise: Double,
+        sunset: Double,
+        exponent: Double
+    ) -> Double? {
+        guard let peakIndex else {
+            return nil
+        }
+
+        let normalizedTime = positiveModulo(localHour, 24)
+        guard normalizedTime >= sunrise && normalizedTime <= sunset else {
+            return 0
+        }
+
+        let daylightLength = max(0.1, sunset - sunrise)
+        let progress = (normalizedTime - sunrise) / daylightLength
+        return peakIndex * pow(max(0, sin(.pi * progress)), exponent)
+    }
+
+    private static func signedModulo(_ value: Double, _ modulus: Double) -> Double {
+        let normalized = positiveModulo(value, modulus)
+        return normalized > modulus / 2 ? normalized - modulus : normalized
     }
 }
 
