@@ -21,7 +21,11 @@ struct LocationDetailSheet: View {
 
                         switch detailLocation.body {
                         case .earth:
-                            EarthLocationMap(location: detailLocation)
+                            EarthLocationMap(
+                                location: detailLocation,
+                                selectedTemperatureCelsius: card.temperatureCelsius,
+                                comparisonCandidates: card.earthComparisonCandidates
+                            )
                         case .mars, .moon:
                             PlanetaryLocationView(
                                 location: baseLocation,
@@ -511,13 +515,64 @@ private struct SourceLink: Identifiable {
 
 private struct EarthLocationMap: View {
     let location: CardLocation
+    let selectedTemperatureCelsius: Double?
+    let comparisonCandidates: [EarthComparisonCandidate]
+
+    @EnvironmentObject private var temperatureUnitStore: TemperatureUnitStore
 
     private var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)
     }
 
+    private var annotations: [EarthTemperatureMapAnnotation] {
+        let candidateAnnotations = comparisonCandidates.compactMap { candidate -> EarthTemperatureMapAnnotation? in
+            guard let latitude = candidate.latitude, let longitude = candidate.longitude else {
+                return nil
+            }
+
+            return EarthTemperatureMapAnnotation(
+                title: candidate.city,
+                subtitle: candidate.country,
+                temperature: candidate.temperature,
+                isSelectedMatch: candidate.isSelectedMatch,
+                coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            )
+        }
+
+        guard !candidateAnnotations.isEmpty else {
+            return [
+                EarthTemperatureMapAnnotation(
+                    title: location.title,
+                    subtitle: location.subtitle,
+                    temperature: selectedTemperatureCelsius,
+                    isSelectedMatch: true,
+                    coordinate: coordinate
+                )
+            ]
+        }
+
+        return candidateAnnotations
+    }
+
+    private var selectedCoordinate: CLLocationCoordinate2D {
+        if let selectedCandidate = comparisonCandidates.first(where: { $0.isSelectedMatch }),
+           let latitude = selectedCandidate.latitude,
+           let longitude = selectedCandidate.longitude {
+            return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        }
+
+        return coordinate
+    }
+
     private var region: MKCoordinateRegion {
-        MKCoordinateRegion(
+        if comparisonCandidates.contains(where: { $0.latitude != nil && $0.longitude != nil }) {
+            return MKCoordinateRegion(
+                center: selectedCoordinate,
+                span: MKCoordinateSpan(latitudeDelta: 12, longitudeDelta: 12)
+            )
+        }
+
+        return MKCoordinateRegion(
             center: coordinate,
             span: MKCoordinateSpan(latitudeDelta: 12, longitudeDelta: 12)
         )
@@ -525,11 +580,64 @@ private struct EarthLocationMap: View {
 
     var body: some View {
         Map(initialPosition: .region(region)) {
-            Marker(location.title, coordinate: coordinate)
+            ForEach(annotations) { annotation in
+                Annotation(annotation.title, coordinate: annotation.coordinate, anchor: .bottom) {
+                    EarthTemperatureMapMarker(
+                        temperature: annotation.temperature.map {
+                            temperatureUnitStore.formattedTemperature(celsius: $0, fractionDigits: 0)
+                        },
+                        isSelectedMatch: annotation.isSelectedMatch
+                    )
+                }
+            }
         }
         .mapStyle(.standard(elevation: .realistic))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .frame(minHeight: 320)
+    }
+}
+
+private struct EarthTemperatureMapAnnotation: Identifiable {
+    let title: String
+    let subtitle: String
+    let temperature: Double?
+    let isSelectedMatch: Bool
+    let coordinate: CLLocationCoordinate2D
+
+    var id: String {
+        "\(title)-\(subtitle)-\(coordinate.latitude)-\(coordinate.longitude)"
+    }
+}
+
+private struct EarthTemperatureMapMarker: View {
+    let temperature: String?
+    let isSelectedMatch: Bool
+
+    var body: some View {
+        VStack(spacing: 4) {
+            if let temperature {
+                Text(temperature)
+                    .font(.system(.caption, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelectedMatch ? .black : .white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(isSelectedMatch ? Color.yellow : Color.black.opacity(0.74))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color.white.opacity(isSelectedMatch ? 0.8 : 0.34), lineWidth: 1)
+                    )
+            }
+
+            Image(systemName: "mappin.circle.fill")
+                .font(.system(size: isSelectedMatch ? 18 : 14, weight: .semibold))
+                .foregroundStyle(isSelectedMatch ? .yellow : .red, .white)
+        }
+        .shadow(color: .black.opacity(0.26), radius: 8, x: 0, y: 4)
+        .accessibilityElement(children: .combine)
     }
 }
 

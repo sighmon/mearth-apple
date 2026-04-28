@@ -487,6 +487,8 @@ private struct OpenMeteoEarthTemperatureService {
                     country: candidate.country,
                     temperature: candidate.temperature,
                     uvIndex: candidate.uvIndex,
+                    latitude: candidate.latitude,
+                    longitude: candidate.longitude,
                     temperatureDeltaFromReference: abs(candidate.temperature - referenceTemperature),
                     isSelectedMatch: false
                 )
@@ -508,6 +510,8 @@ private struct OpenMeteoEarthTemperatureService {
                 country: candidate.country,
                 temperature: candidate.temperature,
                 uvIndex: candidate.uvIndex,
+                latitude: candidate.latitude,
+                longitude: candidate.longitude,
                 temperatureDeltaFromReference: candidate.temperatureDeltaFromReference,
                 isSelectedMatch: candidate.city == selected.city && candidate.country == selected.country
             )

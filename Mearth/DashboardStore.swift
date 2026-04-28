@@ -396,9 +396,9 @@ extension DashboardStore {
                 ],
                 sourceNote: "Closest current city match from the app's sampled global city set via Open-Meteo. The modal shows the full sampled comparison list.",
                 earthComparisonCandidates: [
-                    EarthComparisonCandidate(city: "Reykjavik", country: "Iceland", temperature: -16.0, uvIndex: 0.3, temperatureDeltaFromReference: 2.0, isSelectedMatch: true),
-                    EarthComparisonCandidate(city: "Tromso", country: "Norway", temperature: -12.0, uvIndex: 0.1, temperatureDeltaFromReference: 6.0, isSelectedMatch: false),
-                    EarthComparisonCandidate(city: "Iqaluit", country: "Canada", temperature: -10.0, uvIndex: 0.0, temperatureDeltaFromReference: 8.0, isSelectedMatch: false),
+                    EarthComparisonCandidate(city: "Reykjavik", country: "Iceland", temperature: -16.0, uvIndex: 0.3, latitude: 64.1466, longitude: -21.9426, temperatureDeltaFromReference: 2.0, isSelectedMatch: true),
+                    EarthComparisonCandidate(city: "Tromso", country: "Norway", temperature: -12.0, uvIndex: 0.1, latitude: 69.6496, longitude: 18.9560, temperatureDeltaFromReference: 6.0, isSelectedMatch: false),
+                    EarthComparisonCandidate(city: "Iqaluit", country: "Canada", temperature: -10.0, uvIndex: 0.0, latitude: 63.7467, longitude: -68.5170, temperatureDeltaFromReference: 8.0, isSelectedMatch: false),
                 ],
                 detail: "2°C difference from Mars right now",
                 footnote: "Live weather and UV, Earth background radiation.",

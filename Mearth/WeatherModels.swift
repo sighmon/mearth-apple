@@ -136,8 +136,30 @@ struct EarthComparisonCandidate: Codable, Identifiable, Hashable {
     let country: String
     let temperature: Double
     let uvIndex: Double?
+    let latitude: Double?
+    let longitude: Double?
     let temperatureDeltaFromReference: Double
     let isSelectedMatch: Bool
+
+    init(
+        city: String,
+        country: String,
+        temperature: Double,
+        uvIndex: Double?,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        temperatureDeltaFromReference: Double,
+        isSelectedMatch: Bool
+    ) {
+        self.city = city
+        self.country = country
+        self.temperature = temperature
+        self.uvIndex = uvIndex
+        self.latitude = latitude
+        self.longitude = longitude
+        self.temperatureDeltaFromReference = temperatureDeltaFromReference
+        self.isSelectedMatch = isSelectedMatch
+    }
 
     var id: String {
         "\(city), \(country)"
