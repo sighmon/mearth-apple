@@ -144,6 +144,7 @@ enum PlanetarySiteCatalog {
         PlanetarySite(name: "Chang'e 4", mission: "Von Karman crater", celestialBody: .moon, category: "Robotic lander", latitude: -45.46, longitude: 177.60, year: 2019, note: "First soft landing on the lunar far side."),
         PlanetarySite(name: "Chang'e 5", mission: "Mons Rumker", celestialBody: .moon, category: "Sample return", latitude: 43.06, longitude: -51.92, year: 2020, note: "Returned fresh lunar samples from Oceanus Procellarum."),
         PlanetarySite(name: "SLIM", mission: "Shioli crater", celestialBody: .moon, category: "Robotic lander", latitude: -13.31, longitude: 25.25, year: 2024, note: "Japan's precision lunar landing mission."),
-        PlanetarySite(name: "Chang'e 6", mission: "Apollo basin", celestialBody: .moon, category: "Sample return", latitude: -41.64, longitude: -153.99, year: 2024, note: "Sample-return landing on the lunar far side.")
+        PlanetarySite(name: "Chang'e 6", mission: "Apollo basin", celestialBody: .moon, category: "Sample return", latitude: -41.64, longitude: -153.99, year: 2024, note: "Sample-return landing on the lunar far side."),
+        PlanetarySite(name: "NASA Moon Base", mission: "Shackleton-de Gerlache Connecting Ridge", celestialBody: .moon, category: "Planned moon base site", latitude: -89.5, longitude: -137.9, year: 2026, note: "NASA's planned lunar South Pole base region, placed at a representative Connecting Ridge coordinate.")
     ]
 }
